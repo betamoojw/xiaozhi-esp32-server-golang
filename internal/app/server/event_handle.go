@@ -73,6 +73,9 @@ func (s *EventHandle) HandleSessionEnd() error {
 	}
 	workPool := workpool.NewWorkPool(10, 1000, workpool.JobHandler(f))
 	eventbus.Get().Subscribe(eventbus.TopicSessionEnd, func(clientState *ClientState) {
+		if clientState.MemoryProvider == nil {
+			return
+		}
 		log.Infof("HandleSessionEnd: deviceId: %s", clientState.DeviceID)
 		workPool.Submit(clientState)
 	})

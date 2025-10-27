@@ -155,8 +155,8 @@ func (ac *AdminController) GetDeviceConfigs(c *gin.Context) {
 
 	// 获取Memory默认配置
 	if err := ac.DB.Where("type = ? AND is_default = ? AND enabled = ?", "memory", true, true).First(&response.Memory).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get default Memory config"})
-		return
+		//c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get default Memory config"})
+		//return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": response})
@@ -399,12 +399,12 @@ func (ac *AdminController) CreateConfig(c *gin.Context) {
 	// 检查是否已存在Memory配置
 	var existingCount int64
 	ac.DB.Model(&models.Config{}).Where("type = ?", "memory").Count(&existingCount)
-	
+
 	// 如果不存在任何Memory配置，自动设置为默认配置
 	if existingCount == 0 {
 		config.IsDefault = true
 	}
-	
+
 	// 如果设置为默认配置，先取消其他同类型的默认配置
 	if config.IsDefault {
 		ac.DB.Model(&models.Config{}).Where("type = ? AND is_default = ?", config.Type, true).Update("is_default", false)
@@ -2256,7 +2256,7 @@ func (ac *AdminController) CreateMemoryConfig(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查Memory配置失败"})
 		return
 	}
-	
+
 	// 如果这是第一个Memory配置，自动设置为默认配置
 	if existingCount == 0 {
 		config.IsDefault = true
