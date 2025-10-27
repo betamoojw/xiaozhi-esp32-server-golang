@@ -1,4 +1,4 @@
-package memory
+package llm_memory
 
 import (
 	"context"
@@ -19,6 +19,7 @@ import (
 var (
 	memoryInstance *Memory
 	once           sync.Once
+	configOnce     sync.Once
 )
 
 // Memory 表示对话记忆体
@@ -28,26 +29,114 @@ type Memory struct {
 	sync.RWMutex
 }
 
-// Init 初始化记忆体实例
-func Init() error {
-	var initErr error
-	once.Do(func() {
-		redisInstance := i_redis.GetClient()
-
-		memoryInstance = &Memory{
-			redisClient: redisInstance,
-			keyPrefix:   viper.GetString("redis.key_prefix"),
-		}
-	})
-	return initErr
-}
-
 // Get 获取记忆体实例
 func Get() *Memory {
 	if memoryInstance == nil {
-		Init()
+		once.Do(func() {
+			redisInstance := i_redis.GetClient()
+
+			memoryInstance = &Memory{
+				redisClient: redisInstance,
+				keyPrefix:   viper.GetString("redis.key_prefix"),
+			}
+		})
 	}
 	return memoryInstance
+}
+
+// GetWithConfig 使用配置获取记忆体实例（单例模式）
+func GetWithConfig(config map[string]interface{}) (*Memory, error) {
+	var initErr error
+	configOnce.Do(func() {
+		// 从配置中读取 redis 相关配置
+		redisConfig, ok := config["redis"]
+		if !ok {
+			initErr = fmt.Errorf("redis 配置不存在")
+			return
+		}
+
+		redisConfigMap, ok := redisConfig.(map[string]interface{})
+		if !ok {
+			initErr = fmt.Errorf("redis 配置格式错误")
+			return
+		}
+
+		// 读取 key_prefix 配置
+		var keyPrefix string
+		if keyPrefixInterface, exists := redisConfigMap["key_prefix"]; exists {
+			if kp, ok := keyPrefixInterface.(string); ok {
+				keyPrefix = kp
+			} else {
+				initErr = fmt.Errorf("redis.key_prefix 必须是字符串")
+				return
+			}
+		} else {
+			keyPrefix = "xiaozhi:" // 默认值
+		}
+
+		// 获取 Redis 客户端（这里仍然使用现有的 Redis 客户端获取方式）
+		// 因为 Redis 客户端的初始化比较复杂，暂时保持现有方式
+		redisClient := i_redis.GetClient()
+		if redisClient == nil {
+			initErr = fmt.Errorf("无法获取 Redis 客户端")
+			return
+		}
+
+		// 创建 LLM 记忆实例
+		memoryInstance = &Memory{
+			redisClient: redisClient,
+			keyPrefix:   keyPrefix,
+		}
+
+		log.Log().Infof("LLM 记忆初始化成功, key_prefix: %s", keyPrefix)
+	})
+
+	if initErr != nil {
+		return nil, initErr
+	}
+	return memoryInstance, nil
+}
+
+// NewWithConfig 使用配置创建新的LLM记忆实例
+func NewWithConfig(config map[string]interface{}) (*Memory, error) {
+	// 从配置中读取 redis 相关配置
+	redisConfig, ok := config["redis"]
+	if !ok {
+		return nil, fmt.Errorf("redis 配置不存在")
+	}
+
+	redisConfigMap, ok := redisConfig.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("redis 配置格式错误")
+	}
+
+	// 读取 key_prefix 配置
+	var keyPrefix string
+	if keyPrefixInterface, exists := redisConfigMap["key_prefix"]; exists {
+		if kp, ok := keyPrefixInterface.(string); ok {
+			keyPrefix = kp
+		} else {
+			return nil, fmt.Errorf("redis.key_prefix 必须是字符串")
+		}
+	} else {
+		keyPrefix = "xiaozhi:" // 默认值
+	}
+
+	// 获取 Redis 客户端（这里仍然使用现有的 Redis 客户端获取方式）
+	// 因为 Redis 客户端的初始化比较复杂，暂时保持现有方式
+	redisClient := i_redis.GetClient()
+	if redisClient == nil {
+		return nil, fmt.Errorf("无法获取 Redis 客户端")
+	}
+
+	// 创建 LLM 记忆实例
+	llmMemory := &Memory{
+		redisClient: redisClient,
+		keyPrefix:   keyPrefix,
+	}
+
+	log.Log().Infof("LLM 记忆初始化成功, key_prefix: %s", keyPrefix)
+	return llmMemory, nil
 }
 
 // NewMemory 创建新的记忆体实例（仅用于测试）
@@ -68,7 +157,7 @@ func (m *Memory) getSystemPromptKey(deviceID string) string {
 }
 
 // AddMessage 添加一条新的对话消息到记忆体
-func (m *Memory) AddMessage(ctx context.Context, deviceID string, msg schema.Message) error {
+func (m *Memory) AddMessage(ctx context.Context, deviceID string, agentID string, msg schema.Message) error {
 	if m.redisClient == nil {
 		log.Log().Warn("redis client is nil")
 		return nil
@@ -93,7 +182,7 @@ func (m *Memory) AddMessage(ctx context.Context, deviceID string, msg schema.Mes
 }
 
 // GetMessages 获取设备的所有对话记忆
-func (m *Memory) GetMessages(ctx context.Context, deviceID string, count int) ([]*schema.Message, error) {
+func (m *Memory) GetMessages(ctx context.Context, deviceID string, agentID string, count int) ([]*schema.Message, error) {
 	if m.redisClient == nil {
 		log.Log().Warn("redis client is nil")
 		return []*schema.Message{}, nil
@@ -136,7 +225,7 @@ func (m *Memory) GetMessagesForLLM(ctx context.Context, deviceID string, count i
 	}
 
 	// 获取历史消息（已经是按时间顺序：旧->新）
-	memoryMessages, err := m.GetMessages(ctx, deviceID, count)
+	memoryMessages, err := m.GetMessages(ctx, deviceID, "", count)
 	if err != nil {
 		return nil, err
 	}
@@ -246,5 +335,13 @@ func (m *Memory) SetSummary(ctx context.Context, deviceID string, summary string
 
 // 进行总结
 func (m *Memory) Summary(ctx context.Context, deviceID string, msgList []schema.Message) (string, error) {
+	return "", nil
+}
+
+func (m *Memory) GetContext(ctx context.Context, deviceID string, agentID string, maxToken int) (string, error) {
+	return "", nil
+}
+
+func (m *Memory) Search(ctx context.Context, deviceID string, query string, topK int, timeRangeDays int64) (string, error) {
 	return "", nil
 }

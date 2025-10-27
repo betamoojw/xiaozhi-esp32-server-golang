@@ -13,6 +13,7 @@ import (
 	utypes "xiaozhi-esp32-server-golang/internal/domain/config/types"
 	"xiaozhi-esp32-server-golang/internal/domain/llm"
 	llm_common "xiaozhi-esp32-server-golang/internal/domain/llm/common"
+	"xiaozhi-esp32-server-golang/internal/domain/memory"
 	"xiaozhi-esp32-server-golang/internal/domain/tts"
 
 	. "xiaozhi-esp32-server-golang/internal/data/audio"
@@ -62,6 +63,9 @@ type ClientState struct {
 
 	// TTS 提供者
 	TTSProvider tts.TTSProvider
+	// memory提供者
+	MemoryProvider memory.MemoryProvider
+	MemoryContext  string //memory context
 
 	// 上下文控制
 	Ctx    context.Context
@@ -91,6 +95,13 @@ type ClientState struct {
 
 	IsTtsStart        bool //是否tts开始
 	IsWelcomeSpeaking bool //是否已经欢迎语
+}
+
+func (c *ClientState) GetDeviceIDOrAgentID() string {
+	if c.AgentID != "" {
+		return c.AgentID
+	}
+	return c.DeviceID
 }
 
 // 历史消息相关的方法开始

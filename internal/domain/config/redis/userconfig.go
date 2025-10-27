@@ -58,9 +58,10 @@ func (u *UserConfig) GetUserConfig(ctx context.Context, userID string) (types.UC
 	}
 	//将UserConfig转换成UConfig结构
 	kv := map[string]string{
-		"llm": "",
-		"asr": "",
-		"tts": "",
+		"llm":    "",
+		"asr":    "",
+		"tts":    "",
+		"memory": "",
 	}
 	for k, _ := range kv {
 		var redisPerConfig map[string]interface{}
@@ -91,6 +92,12 @@ func (u *UserConfig) GetUserConfig(ctx context.Context, userID string) (types.UC
 				return types.UConfig{}, err
 			}
 			ret.Asr = config
+		} else if k == "memory" {
+			config, err := u.getMemoryConfig(ctx, redisPerConfig)
+			if err != nil {
+				return types.UConfig{}, err
+			}
+			ret.Memory = config
 		}
 	}
 	ret.Vad = u.getVadConfig(ctx)
@@ -156,6 +163,18 @@ func (u *UserConfig) getTtsConfig(ctx context.Context, config map[string]interfa
 		Config:   commonConfig,
 	}, nil
 }
+
+func (u *UserConfig) getMemoryConfig(ctx context.Context, config map[string]interface{}) (types.MemoryConfig, error) {
+	provider, commonConfig, err := u.getConfigByType(ctx, config, "memory")
+	if err != nil {
+		return types.MemoryConfig{}, err
+	}
+	return types.MemoryConfig{
+		Provider: provider,
+		Config:   commonConfig,
+	}, nil
+}
+
 func (u *UserConfig) GetUserConfigKey(deviceId string) string {
 	return fmt.Sprintf("%s:userconfig:%s", u.prefix, deviceId)
 }

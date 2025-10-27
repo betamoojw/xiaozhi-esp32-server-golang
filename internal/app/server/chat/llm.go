@@ -12,9 +12,9 @@ import (
 	"time"
 
 	. "xiaozhi-esp32-server-golang/internal/data/client"
+	"xiaozhi-esp32-server-golang/internal/domain/eventbus"
 	"xiaozhi-esp32-server-golang/internal/domain/llm"
 	llm_common "xiaozhi-esp32-server-golang/internal/domain/llm/common"
-	llm_memory "xiaozhi-esp32-server-golang/internal/domain/llm/memory"
 	"xiaozhi-esp32-server-golang/internal/domain/mcp"
 	"xiaozhi-esp32-server-golang/internal/domain/play_music"
 	"xiaozhi-esp32-server-golang/internal/util"
@@ -641,8 +641,11 @@ func (l *LLMManager) AddLlmMessage(ctx context.Context, msg *schema.Message) err
 		log.Warnf("尝试添加 nil 消息到 LLM 对话历史")
 		return fmt.Errorf("消息不能为 nil")
 	}
+	//同步添加到内存中
 	l.clientState.AddMessage(msg)
-	llm_memory.Get().AddMessage(ctx, l.clientState.DeviceID, *msg)
+	//发送消息到evenbus进行异步处理, 存储消息、添加到记忆体中
+	eventbus.Get().Publish(eventbus.TopicAddMessage, l.clientState, *msg)
+
 	return nil
 }
 
@@ -650,10 +653,28 @@ func (l *LLMManager) GetMessages(ctx context.Context, userMessage *schema.Messag
 	//从dialogue中获取
 	messageList := l.clientState.GetMessages(count)
 
+	// 构建 system prompt
+	systemPrompt := l.clientState.SystemPrompt
+	if l.clientState.MemoryContext != "" {
+		systemPrompt += fmt.Sprintf("\n用户个性化信息: \n%s", l.clientState.MemoryContext)
+	}
+
+	//search memory
+	if l.clientState.MemoryProvider != nil && userMessage != nil {
+		memoryContext, err := l.clientState.MemoryProvider.Search(ctx, l.clientState.GetDeviceIDOrAgentID(), userMessage.Content, 10, 180)
+		if err != nil {
+			log.Errorf("搜索记忆失败: %v", err)
+		}
+		log.Debugf("搜索记忆成功, 输入内容: %s, 记忆内容: %s", userMessage.Content, memoryContext)
+		if memoryContext != "" {
+			systemPrompt += fmt.Sprintf("\n历史关联信息: \n%s", memoryContext)
+		}
+	}
+
 	retMessage := make([]*schema.Message, 0)
 	retMessage = append(retMessage, &schema.Message{
 		Role:    schema.System,
-		Content: l.clientState.SystemPrompt,
+		Content: systemPrompt,
 	})
 	retMessage = append(retMessage, messageList...)
 	if userMessage != nil {

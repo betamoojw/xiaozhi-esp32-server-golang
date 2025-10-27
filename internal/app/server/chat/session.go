@@ -18,9 +18,12 @@ import (
 	. "xiaozhi-esp32-server-golang/internal/data/client"
 	. "xiaozhi-esp32-server-golang/internal/data/msg"
 	user_config "xiaozhi-esp32-server-golang/internal/domain/config"
+	"xiaozhi-esp32-server-golang/internal/domain/eventbus"
 	"xiaozhi-esp32-server-golang/internal/domain/llm"
 	llm_common "xiaozhi-esp32-server-golang/internal/domain/llm/common"
 	"xiaozhi-esp32-server-golang/internal/domain/mcp"
+	"xiaozhi-esp32-server-golang/internal/domain/memory"
+	"xiaozhi-esp32-server-golang/internal/domain/memory/llm_memory"
 	"xiaozhi-esp32-server-golang/internal/domain/tts"
 	"xiaozhi-esp32-server-golang/internal/util"
 	log "xiaozhi-esp32-server-golang/logger"
@@ -72,12 +75,28 @@ func (s *ChatSession) Start(pctx context.Context) error {
 		return err
 	}
 
+	err = s.initHistoryMessages()
+	if err != nil {
+		log.Errorf("初始化对话历史失败: %v", err)
+	}
+
 	go s.CmdMessageLoop(s.ctx)   //处理信令消息
 	go s.AudioMessageLoop(s.ctx) //处理音频数据
 	go s.processChatText(s.ctx)  //处理 asr后 的对话消息
 	go s.llmManager.Start(s.ctx) //处理 llm后 的一系列返回消息
 	go s.ttsManager.Start(s.ctx) //处理 tts的 消息队列
 
+	return nil
+}
+
+// 初始化历史对话记录到内存中
+func (s *ChatSession) initHistoryMessages() error {
+	historyMessages, err := llm_memory.Get().GetMessages(s.ctx, s.clientState.DeviceID, s.clientState.AgentID, 20)
+	if err != nil {
+		log.Errorf("获取对话历史失败: %v", err)
+		return err
+	}
+	s.clientState.InitMessages(historyMessages)
 	return nil
 }
 
@@ -98,6 +117,18 @@ func (c *ChatSession) InitAsrLlmTts() error {
 	}
 	c.clientState.SetAsrPcmFrameSize(c.clientState.InputAudioFormat.SampleRate, c.clientState.InputAudioFormat.Channels, c.clientState.InputAudioFormat.FrameDuration)
 
+	memoryConfig := c.clientState.DeviceConfig.Memory
+	memoryProvider, err := memory.GetProvider(memory.MemoryType(memoryConfig.Provider), memoryConfig.Config)
+	if err != nil {
+		return fmt.Errorf("创建 Memory 提供者失败: %v", err)
+	}
+	c.clientState.MemoryProvider = memoryProvider
+	//初始化memory context
+	context, err := memoryProvider.GetContext(c.ctx, c.clientState.GetDeviceIDOrAgentID(), 500)
+	if err != nil {
+		log.Warnf("初始化memory context失败: %v", err)
+	}
+	c.clientState.MemoryContext = context
 	return nil
 }
 
@@ -675,6 +706,8 @@ func (s *ChatSession) Close() {
 
 	// 取消会话级别的上下文
 	s.cancel()
+
+	eventbus.Get().Publish(eventbus.TopicSessionEnd, s.clientState)
 
 	log.Debugf("ChatSession.Close() 会话资源清理完成, 设备 %s", s.clientState.DeviceID)
 }

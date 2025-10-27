@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	llm_memory "xiaozhi-esp32-server-golang/internal/domain/llm/memory"
+	llm_memory "xiaozhi-esp32-server-golang/internal/domain/memory/llm_memory"
 	log "xiaozhi-esp32-server-golang/logger"
 )
 

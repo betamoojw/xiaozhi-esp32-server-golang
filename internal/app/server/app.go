@@ -62,7 +62,14 @@ func (a *App) Run() {
 
 	a.registerHandler()
 
+	a.initEventHandle()
+
 	select {} // 阻塞主线程
+}
+
+func (app *App) initEventHandle() {
+	eventHandle := NewEventHandle()
+	eventHandle.Start()
 }
 
 func (app *App) newMqttUdpAdapter() (*mqtt_udp.MqttUdpAdapter, error) {

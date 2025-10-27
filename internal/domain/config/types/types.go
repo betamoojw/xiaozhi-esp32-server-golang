@@ -10,6 +10,11 @@ type TtsConfig struct {
 	Config   map[string]interface{} `json:"config"`
 }
 
+type MemoryConfig struct {
+	Provider string                 `json:"provider"`
+	Config   map[string]interface{} `json:"config"`
+}
+
 type LlmConfig struct {
 	Provider string                 `json:"provider"`
 	Config   map[string]interface{} `json:"config"`
@@ -26,10 +31,11 @@ type ConfigItem struct {
 }
 
 type UConfig struct {
-	SystemPrompt string    `json:"system_prompt"`
-	Asr          AsrConfig `json:"asr"`
-	Tts          TtsConfig `json:"tts"`
-	Llm          LlmConfig `json:"llm"`
-	Vad          VadConfig `json:"vad"`
-	AgentId      string    `json:"agent_id"` //所属agent_id
+	SystemPrompt string       `json:"system_prompt"`
+	Asr          AsrConfig    `json:"asr"`
+	Tts          TtsConfig    `json:"tts"`
+	Llm          LlmConfig    `json:"llm"`
+	Vad          VadConfig    `json:"vad"`
+	Memory       MemoryConfig `json:"memory"`
+	AgentId      string       `json:"agent_id"` //所属agent_id
 }

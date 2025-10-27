@@ -60,6 +60,8 @@ func Init(configFile string) error {
 	//init redis
 	initRedis()
 
+	// memory 模块采用懒加载，使用时自动初始化，无需显式初始化
+
 	//init auth
 	err = initAuthManager()
 	if err != nil {

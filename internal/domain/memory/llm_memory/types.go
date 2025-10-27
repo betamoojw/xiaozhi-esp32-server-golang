@@ -1,4 +1,4 @@
-package memory
+package llm_memory
 
 var MemorySummaryPrompt = `
 # 时空记忆编织者
