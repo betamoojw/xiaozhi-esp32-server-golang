@@ -17,11 +17,11 @@ services:
       - xiaozhi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword"]
-      timeout: 20s
-      retries: 10
+      test: ["CMD", "mysql", "-h", "localhost", "-P", "3306", "-u", "root", "-ppassword", "-e", "SELECT 1"]
+      timeout: 5s
+      retries: 3
       interval: 10s
-      start_period: 30s
+      start_period: 180s
 
   # 主程序服务
   main-server:
