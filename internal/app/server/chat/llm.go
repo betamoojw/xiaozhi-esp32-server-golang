@@ -17,6 +17,7 @@ import (
 	llm_common "xiaozhi-esp32-server-golang/internal/domain/llm/common"
 	"xiaozhi-esp32-server-golang/internal/domain/mcp"
 	"xiaozhi-esp32-server-golang/internal/domain/play_music"
+	"xiaozhi-esp32-server-golang/internal/domain/speaker"
 	"xiaozhi-esp32-server-golang/internal/util"
 	log "xiaozhi-esp32-server-golang/logger"
 
@@ -392,7 +393,7 @@ func (l *LLMManager) handleToolCallResponse(ctx context.Context, userMessage *sc
 
 	// 如果工具调用成功且没有被标记为停止处理，则继续LLM调用
 	if invokeToolSuccess && !shouldStopLLMProcessing {
-		l.DoLLmRequest(ctx, nil, l.einoTools, true)
+		l.DoLLmRequest(ctx, nil, l.einoTools, true, nil)
 	}
 
 	return invokeToolSuccess, nil
@@ -599,7 +600,7 @@ func (l *LLMManager) handleToolResult(toolResultStr string) (mcp_go.CallToolResu
 	return toolResult, true
 }
 
-func (l *LLMManager) DoLLmRequest(ctx context.Context, userMessage *schema.Message, einoTools []*schema.ToolInfo, isSync bool) error {
+func (l *LLMManager) DoLLmRequest(ctx context.Context, userMessage *schema.Message, einoTools []*schema.ToolInfo, isSync bool, speakerResult *speaker.IdentifyResult) error {
 	log.Debugf("发送带工具的 LLM 请求, seesionID: %s, requestEinoMessages: %+v", l.clientState.SessionID, userMessage)
 	clientState := l.clientState
 

@@ -68,3 +68,32 @@ type GlobalRole struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
+
+// 声纹组模型
+type SpeakerGroup struct {
+	ID          uint      `json:"id" gorm:"primarykey"`
+	UserID      uint      `json:"user_id" gorm:"not null;index"`
+	AgentID     uint      `json:"agent_id" gorm:"not null;index"`
+	Name        string    `json:"name" gorm:"type:varchar(100);not null"`
+	Prompt      string    `json:"prompt" gorm:"type:text"`
+	Description string    `json:"description" gorm:"type:text"`
+	Status      string    `json:"status" gorm:"type:varchar(20);default:'active'"`
+	SampleCount int       `json:"sample_count" gorm:"default:0"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// 声纹样本模型
+type SpeakerSample struct {
+	ID            uint      `json:"id" gorm:"primarykey"`
+	SpeakerGroupID uint     `json:"speaker_group_id" gorm:"not null;index"`
+	UserID        uint      `json:"user_id" gorm:"not null;index"`
+	UUID          string    `json:"uuid" gorm:"type:varchar(36);not null;uniqueIndex"`
+	FilePath      string    `json:"file_path" gorm:"type:varchar(500);not null"`
+	FileName      string    `json:"file_name" gorm:"type:varchar(255)"`
+	FileSize      int64     `json:"file_size"`
+	Duration      float32   `json:"duration"`
+	Status        string    `json:"status" gorm:"type:varchar(20);default:'active'"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}

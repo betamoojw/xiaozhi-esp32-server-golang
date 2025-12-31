@@ -14,6 +14,7 @@ import (
 	"xiaozhi-esp32-server-golang/internal/domain/llm"
 	llm_common "xiaozhi-esp32-server-golang/internal/domain/llm/common"
 	"xiaozhi-esp32-server-golang/internal/domain/memory"
+	"xiaozhi-esp32-server-golang/internal/domain/speaker"
 	"xiaozhi-esp32-server-golang/internal/domain/tts"
 
 	. "xiaozhi-esp32-server-golang/internal/data/audio"
@@ -97,6 +98,25 @@ type ClientState struct {
 
 	IsTtsStart        bool //是否tts开始
 	IsWelcomeSpeaking bool //是否已经欢迎语
+
+	// 声纹识别相关
+	SpeakerProvider speaker.SpeakerProvider // 声纹识别提供者（在 session 中初始化）
+
+	// 异步获取声纹结果的回调函数（在 session 中设置）
+	OnVoiceSilenceSpeakerCallback func(ctx context.Context)
+}
+
+// IsSpeakerEnabled 检查是否启用声纹识别（从全局配置中读取）
+func (c *ClientState) IsSpeakerEnabled() bool {
+	// 从全局配置（viper）获取 enable 字段
+	enabled := viper.GetBool("voice_identify.enable")
+	return enabled
+}
+
+// HasSpeakerGroups 检查设备配置中是否有声纹组
+func (c *ClientState) HasSpeakerGroups() bool {
+	// 检查设备配置中是否有声纹组配置
+	return len(c.DeviceConfig.VoiceIdentify) > 0
 }
 
 func (c *ClientState) IsRealTime() bool {
@@ -382,6 +402,11 @@ func (state *ClientState) OnVoiceSilence() {
 	state.SetStartAsrTs() //进行asr统计
 
 	state.SetStatus(ClientStatusListenStop)
+
+	// 如果设置了异步获取声纹结果的回调，则调用
+	if state.OnVoiceSilenceSpeakerCallback != nil {
+		state.OnVoiceSilenceSpeakerCallback(state.Ctx)
+	}
 }
 
 type Llm struct {
