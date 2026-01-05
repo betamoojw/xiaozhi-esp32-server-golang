@@ -77,6 +77,10 @@ func LoadWithPath(configPath string) *Config {
 	if serviceURL := os.Getenv("SPEAKER_SERVICE_URL"); serviceURL != "" {
 		config.SpeakerService.URL = serviceURL
 	}
+	// 优先使用环境变量覆盖音频存储路径
+	if audioBasePath := os.Getenv("AUDIO_BASE_PATH"); audioBasePath != "" {
+		config.History.AudioBasePath = audioBasePath
+	}
 
 	fmt.Println("config", config)
 

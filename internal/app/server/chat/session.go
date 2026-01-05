@@ -265,11 +265,10 @@ func (s *ChatSession) shouldUseManager() bool {
 func (s *ChatSession) loadFromManager() ([]*schema.Message, error) {
 	// 创建 HistoryClient
 	historyCfg := history.HistoryClientConfig{
-		BaseURL:     viper.GetString("manager.backend_url"),
-		AuthToken:   viper.GetString("manager.history_auth_token"),
-		Timeout:     viper.GetDuration("manager.history_timeout"),
-		Enabled:     true,
-		EnableAudio: false, // 初始化时不需要音频
+		BaseURL:   util.GetBackendURL(),
+		AuthToken: viper.GetString("manager.history_auth_token"),
+		Timeout:   viper.GetDuration("manager.history_timeout"),
+		Enabled:   true,
 	}
 	client := history.NewHistoryClient(historyCfg)
 
@@ -362,6 +361,9 @@ func (c *ChatSession) CmdMessageLoop(ctx context.Context) {
 			recvFailCount = recvFailCount + 1
 			continue
 		}
+		if message == nil {
+			continue
+		}
 		recvFailCount = 0
 		log.Infof("收到文本消息: %s", string(message))
 		if err := c.HandleTextMessage(message); err != nil {
@@ -383,6 +385,9 @@ func (c *ChatSession) AudioMessageLoop(ctx context.Context) {
 		if err != nil {
 			log.Errorf("recv audio error: %v", err)
 			return
+		}
+		if message == nil {
+			continue
 		}
 		log.Debugf("收到音频数据，大小: %d 字节", len(message))
 		isAuth := viper.GetBool("auth.enable")
