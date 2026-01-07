@@ -60,6 +60,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      voice-server:
+        condition: service_started
     environment:
       - DB_HOST=mysql
       - DB_PORT=3306
