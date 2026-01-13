@@ -654,6 +654,11 @@ func (ac *AdminController) GetSystemConfigs(c *gin.Context) {
 		}
 	}
 
+	// 处理 VAD 配置
+	if configs, exists := configsByType["vad"]; exists && len(configs) > 0 {
+		response["vad"] = selectAndParseConfig(configs)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"data": response})
 }
 
