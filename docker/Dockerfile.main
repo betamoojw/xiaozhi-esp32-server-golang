@@ -5,7 +5,13 @@ FROM golang:1.24.4 AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 安装构建依赖
-RUN apt-get update && apt-get install -y libopus-dev libopusfile-dev pkg-config
+RUN apt-get update && apt-get install -y \
+    libopus-dev \
+    libopusfile-dev \
+    pkg-config \
+    libc++-dev \
+    libc++abi-dev \
+    g++
 
 # 复制 onnxruntime 库文件（仅 x64）
 COPY docker/lib/onnxruntime-linux-x64-1.21.0.tgz /tmp/
