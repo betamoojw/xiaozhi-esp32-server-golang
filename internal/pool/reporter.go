@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 	"xiaozhi-esp32-server-golang/internal/components/http"
+	"xiaozhi-esp32-server-golang/internal/util"
 	log "xiaozhi-esp32-server-golang/logger"
 
 	"github.com/spf13/viper"
@@ -24,8 +25,8 @@ var (
 // GetStatsReporter 获取全局统计上报器（单例）
 func GetStatsReporter() *StatsReporter {
 	reporterOnce.Do(func() {
-		// 获取 manager backend URL
-		baseURL := viper.GetString("manager.backend_url")
+		// 获取 manager backend URL，优先从环境变量获取，如果环境变量不存在则从配置获取
+		baseURL := util.GetBackendURL()
 		if baseURL == "" {
 			baseURL = "http://localhost:8080" // 默认值
 		}
@@ -71,7 +72,7 @@ func (r *StatsReporter) StartReporting(ctx context.Context) {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
-		log.Infof("资源池统计上报已启动，每 %v 上报一次", interval)
+		//log.Infof("资源池统计上报已启动，每 %v 上报一次", interval)
 
 		for {
 			select {

@@ -5,17 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	cmap "github.com/orcaman/concurrent-map/v2"
-	"github.com/spf13/viper"
 
 	"xiaozhi-esp32-server-golang/internal/domain/config/types"
 	"xiaozhi-esp32-server-golang/internal/domain/mcp"
+	"xiaozhi-esp32-server-golang/internal/util"
 	log "xiaozhi-esp32-server-golang/logger"
 )
 
@@ -39,11 +38,11 @@ type WebSocketClient struct {
 	uuid          string
 
 	// 重连相关字段
-	retryStopChan chan struct{} // 重连协程停止信号
-	retryWg       sync.WaitGroup // 重连协程等待组
-	retryMu       sync.Mutex     // 保护重连相关操作
-	isRetrying    bool           // 是否正在重连
-	isShuttingDown bool          // 是否正在关闭（主动断开，不重连）
+	retryStopChan  chan struct{}  // 重连协程停止信号
+	retryWg        sync.WaitGroup // 重连协程等待组
+	retryMu        sync.Mutex     // 保护重连相关操作
+	isRetrying     bool           // 是否正在重连
+	isShuttingDown bool           // 是否正在关闭（主动断开，不重连）
 }
 
 type WebSocketRequest struct {
@@ -75,11 +74,8 @@ func GetDefaultClient() *WebSocketClient {
 }
 
 func NewWebSocketClient() *WebSocketClient {
-	// 优先从环境变量获取，然后从配置获取
-	baseURL := os.Getenv("BACKEND_URL")
-	if baseURL == "" {
-		baseURL = viper.GetString("manager.backend_url")
-	}
+	// 优先从环境变量获取，如果环境变量不存在则从配置获取
+	baseURL := util.GetBackendURL()
 	if baseURL == "" {
 		baseURL = "http://localhost:8080"
 	}
@@ -411,8 +407,8 @@ func (c *WebSocketClient) startReconnectLoop() {
 	}()
 
 	// 硬编码的退避算法参数
-	initialDelay := 3 * time.Second  // 初始延迟3秒
-	maxDelay := 1 * time.Minute      // 最大延迟1分钟
+	initialDelay := 3 * time.Second // 初始延迟3秒
+	maxDelay := 1 * time.Minute     // 最大延迟1分钟
 	backoffMultiplier := 2.0        // 退避倍数
 
 	delay := initialDelay
@@ -961,14 +957,14 @@ func Init(ctx context.Context) error {
 // Close 关闭Manager配置提供者，清理资源
 func Close() error {
 	log.Infof("Closing Manager config provider")
-	
+
 	// 停止重连协程
 	client := GetDefaultClient()
 	client.StopReconnect()
-	
+
 	// 主动断开连接（不触发重连）
 	client.disconnect(true)
-	
+
 	return nil
 }
 
