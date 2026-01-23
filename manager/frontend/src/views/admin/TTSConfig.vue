@@ -74,6 +74,7 @@
             <el-option label="Edge TTS" value="edge" />
             <el-option label="Edge 离线" value="edge_offline" />
             <el-option label="OpenAI" value="openai" />
+            <el-option label="智谱" value="zhipu" />
           </el-select>
         </el-form-item>
         
@@ -198,6 +199,49 @@
           </el-form-item>
         </template>
 
+        <!-- 智谱 TTS 配置（使用 OpenAI 格式） -->
+        <template v-if="form.provider === 'zhipu'">
+          <el-form-item label="API Key" prop="zhipu.api_key">
+            <el-input v-model="form.zhipu.api_key" placeholder="请输入API Key" type="password" show-password />
+          </el-form-item>
+          <el-form-item label="API URL" prop="zhipu.api_url">
+            <el-input v-model="form.zhipu.api_url" placeholder="https://open.bigmodel.cn/api/paas/v4/audio/speech" />
+          </el-form-item>
+          <el-form-item label="模型" prop="zhipu.model">
+            <el-input v-model="form.zhipu.model" placeholder="glm-tts" />
+          </el-form-item>
+          <el-form-item label="音色" prop="zhipu.voice">
+            <el-select v-model="form.zhipu.voice" placeholder="请选择音色" style="width: 100%">
+              <el-option label="彤彤（默认音色）" value="tongtong" />
+              <el-option label="锤锤" value="chuichui" />
+              <el-option label="小陈" value="xiaochen" />
+              <el-option label="动动动物圈jam音色" value="jam" />
+              <el-option label="动动动物圈kazi音色" value="kazi" />
+              <el-option label="动动动物圈douji音色" value="douji" />
+              <el-option label="动动动物圈luodo音色" value="luodo" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="响应格式" prop="zhipu.response_format">
+            <el-select v-model="form.zhipu.response_format" placeholder="请选择响应格式" style="width: 100%">
+              <el-option label="MP3" value="mp3" />
+              <el-option label="Opus" value="opus" />
+              <el-option label="AAC" value="aac" />
+              <el-option label="FLAC" value="flac" />
+              <el-option label="WAV" value="wav" />
+              <el-option label="PCM" value="pcm" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="语速" prop="zhipu.speed">
+            <el-input-number v-model="form.zhipu.speed" :min="0.25" :max="4.0" :step="0.1" style="width: 100%" placeholder="0.25-4.0，默认1.0" />
+          </el-form-item>
+          <el-form-item label="使用流式" prop="zhipu.stream">
+            <el-switch v-model="form.zhipu.stream" />
+          </el-form-item>
+          <el-form-item label="帧时长" prop="zhipu.frame_duration">
+            <el-input-number v-model="form.zhipu.frame_duration" :min="1" :max="1000" style="width: 100%" placeholder="毫秒" />
+          </el-form-item>
+        </template>
+
         <!-- OpenAI TTS 配置 -->
         <template v-if="form.provider === 'openai'">
           <el-form-item label="API Key" prop="openai.api_key">
@@ -318,6 +362,16 @@ const form = reactive({
     speed: 1.0,
     stream: true,
     frame_duration: 60
+  },
+  zhipu: {
+    api_key: '',
+    api_url: 'https://open.bigmodel.cn/api/paas/v4/audio/speech',
+    model: 'glm-tts',
+    voice: 'tongtong',
+    response_format: 'wav',
+    speed: 1.0,
+    stream: true,
+    frame_duration: 60
   }
 })
 
@@ -374,6 +428,18 @@ const generateConfig = () => {
       config.stream = form.openai.stream
       config.frame_duration = form.openai.frame_duration
       break
+    case 'zhipu':
+      // 智谱使用 OpenAI 格式，需要在 json_data 中设置 provider 为 "openai"
+      config.provider = 'openai'
+      config.api_key = form.zhipu.api_key
+      config.api_url = form.zhipu.api_url || 'https://open.bigmodel.cn/api/paas/v4/audio/speech'
+      config.model = form.zhipu.model || 'glm-tts'
+      config.voice = form.zhipu.voice
+      config.response_format = form.zhipu.response_format
+      config.speed = form.zhipu.speed
+      config.stream = form.zhipu.stream
+      config.frame_duration = form.zhipu.frame_duration
+      break
   }
   
   return JSON.stringify(config)
@@ -405,7 +471,9 @@ const rules = {
   // Edge 离线验证规则
   'edge_offline.server_url': [{ required: true, message: '请输入服务器URL', trigger: 'blur' }],
   // OpenAI TTS 验证规则
-  'openai.api_key': [{ required: true, message: '请输入API Key', trigger: 'blur' }]
+  'openai.api_key': [{ required: true, message: '请输入API Key', trigger: 'blur' }],
+  // 智谱 TTS 验证规则
+  'zhipu.api_key': [{ required: true, message: '请输入API Key', trigger: 'blur' }]
 }
 
 const loadConfigs = async () => {
@@ -481,6 +549,17 @@ const editConfig = (config) => {
         form.openai.speed = configData.speed || 1.0
         form.openai.stream = configData.stream !== undefined ? configData.stream : true
         form.openai.frame_duration = configData.frame_duration || 60
+        break
+      case 'zhipu':
+        // 智谱配置从 json_data 中读取，json_data 中应该包含 provider: "openai"
+        form.zhipu.api_key = configData.api_key || ''
+        form.zhipu.api_url = configData.api_url || 'https://open.bigmodel.cn/api/paas/v4/audio/speech'
+        form.zhipu.model = configData.model || 'glm-tts'
+        form.zhipu.voice = configData.voice || 'tongtong'
+        form.zhipu.response_format = configData.response_format || 'wav'
+        form.zhipu.speed = configData.speed || 1.0
+        form.zhipu.stream = configData.stream !== undefined ? configData.stream : true
+        form.zhipu.frame_duration = configData.frame_duration || 60
         break
     }
   } catch (error) {
@@ -643,6 +722,16 @@ const resetForm = () => {
       model: 'tts-1',
       voice: 'alloy',
       response_format: 'mp3',
+      speed: 1.0,
+      stream: true,
+      frame_duration: 60
+    },
+    zhipu: {
+      api_key: '',
+      api_url: 'https://open.bigmodel.cn/api/paas/v4/audio/speech',
+      model: 'glm-tts',
+      voice: 'tongtong',
+      response_format: 'wav',
       speed: 1.0,
       stream: true,
       frame_duration: 60

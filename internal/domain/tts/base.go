@@ -32,8 +32,13 @@ type TTSProvider interface {
 }
 
 // GetTTSProvider 获取一个完整的TTS提供者（支持Context）
+// providerName: 从数据库configs表的provider字段获取的值（如"zhipu"）
+// config: 从数据库configs表的json_data字段解析的配置map
+// 优先使用 config 中的 provider 字段（如"openai"），如果没有则使用 providerName 参数
 func GetTTSProvider(providerName string, config map[string]interface{}) (TTSProvider, error) {
 	// 优先使用 config 中的 provider，否则使用参数中的 provider
+	// 这样支持在数据库provider字段中存储供应商标识（如"zhipu"），
+	// 而在json_data中存储实际的provider类型（如"openai"）
 	if configProvider, ok := config["provider"].(string); ok && configProvider != "" {
 		providerName = configProvider
 	}
