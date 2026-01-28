@@ -70,6 +70,7 @@ func (a *ASRManager) ProcessVadAudio(ctx context.Context, onClose func()) {
 		var vadWrapper *pool.ResourceWrapper[inter.VAD]
 		var vadProvider inter.VAD
 		needVad := !(state.Asr.AutoEnd || state.ListenMode == "manual")
+		log.Debugf("autoEnd: %v, listenMode: %s, needVad: %v", state.Asr.AutoEnd, state.ListenMode, needVad)
 		if needVad {
 			var err error
 			provider := state.DeviceConfig.Vad.Provider

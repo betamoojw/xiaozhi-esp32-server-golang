@@ -95,10 +95,15 @@ func (a *Asr) AddAudioData(pcmFrameData []float32) error {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 	if a.AsrAudioChannel != nil {
-		a.AsrAudioChannel <- pcmFrameData
-
-		// 同步缓存音频数据用于聊天历史记录
-		a.HistoryAudioBuffer = append(a.HistoryAudioBuffer, pcmFrameData...)
+		// 使用 select 实现非阻塞发送，避免 channel 满时死锁
+		select {
+		case a.AsrAudioChannel <- pcmFrameData:
+			// 成功发送，同步缓存音频数据用于聊天历史记录
+			a.HistoryAudioBuffer = append(a.HistoryAudioBuffer, pcmFrameData...)
+		default:
+			// channel 已满，跳过本次数据，避免阻塞导致死锁
+			log.Warnf("AsrAudioChannel 已满，跳过本次音频数据")
+		}
 	}
 	return nil
 }
