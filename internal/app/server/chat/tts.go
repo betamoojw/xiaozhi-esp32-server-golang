@@ -115,9 +115,9 @@ func (t *TTSManager) handleTextResponse(ctx context.Context, llmResponse llm_com
 	return nil
 }
 
-// getTTSProviderInstance 获取TTS Provider实例（从资源池获取并动态设置音色）
+// getTTSProviderInstance 获取TTS Provider实例（使用provider+音色作为资源池唯一key）
 func (t *TTSManager) getTTSProviderInstance() (*pool.ResourceWrapper[tts.TTSProvider], error) {
-	// 优先使用声纹TTS配置
+	// 获取TTS配置和provider
 	var ttsConfig map[string]interface{}
 	var ttsProvider string
 
@@ -141,47 +141,48 @@ func (t *TTSManager) getTTSProviderInstance() (*pool.ResourceWrapper[tts.TTSProv
 		ttsConfig = t.clientState.DeviceConfig.Tts.Config
 	}
 
-	// 从资源池获取 TTS 资源（key 只包含 provider）
-	ttsWrapper, err := pool.Acquire[tts.TTSProvider](
-		"tts",
-		ttsProvider,
-		ttsConfig, // 传入完整配置用于创建实例（首次创建时使用）
-	)
+	// 提取音色ID用于组合资源池key
+	voiceID := extractVoiceID(ttsConfig)
+
+	// 组合资源池key：provider:voiceID（如果有音色ID）
+	poolKey := ttsProvider
+	if voiceID != "" {
+		poolKey = fmt.Sprintf("%s:%s", ttsProvider, voiceID)
+	}
+
+	// 从资源池获取TTS资源（使用provider+音色作为唯一key）
+	ttsWrapper, err := pool.Acquire[tts.TTSProvider]("tts", poolKey, ttsConfig)
 	if err != nil {
 		log.Errorf("获取TTS资源失败: %v", err)
 		return nil, fmt.Errorf("获取TTS资源失败: %v", err)
 	}
 
-	ttsProviderInstance := ttsWrapper.GetProvider()
+	return ttsWrapper, nil
+}
 
-	// 动态修改音色（如果使用声纹TTS配置）
-	if t.clientState.SpeakerTTSConfig != nil && len(t.clientState.SpeakerTTSConfig) > 0 {
-		// 提取音色相关配置
-		voiceConfig := make(map[string]interface{})
-		// 根据 provider 类型提取对应的音色字段
-		if ttsProvider == "cosyvoice" {
-			if spkID, ok := ttsConfig["spk_id"].(string); ok && spkID != "" {
-				voiceConfig["spk_id"] = spkID
-			}
-		} else {
-			// 其他 provider 使用 voice 字段
-			if voice, ok := ttsConfig["voice"].(string); ok && voice != "" {
-				voiceConfig["voice"] = voice
-			}
-		}
-
-		// 调用 SetVoice 方法动态设置音色
-		if len(voiceConfig) > 0 {
-			if err := ttsProviderInstance.SetVoice(voiceConfig); err != nil {
-				log.Warnf("动态设置TTS音色失败: %v", err)
-				// 继续使用，不返回错误
-			} else {
-				log.Debugf("动态设置TTS音色成功: %+v", voiceConfig)
-			}
-		}
+// extractVoiceID 从配置中提取音色ID
+func extractVoiceID(config map[string]interface{}) string {
+	if config == nil {
+		return ""
 	}
 
-	return ttsWrapper, nil
+	// 尝试从config中获取provider类型
+	provider, _ := config["provider"].(string)
+
+	// cosyvoice使用spk_id字段
+	if provider == "cosyvoice" {
+		if spkID, ok := config["spk_id"].(string); ok && spkID != "" {
+			return spkID
+		}
+		return ""
+	}
+
+	// minimax和其他provider：使用voice
+	if voice, ok := config["voice"].(string); ok && voice != "" {
+		return voice
+	}
+
+	return ""
 }
 
 // 同步 TTS 处理

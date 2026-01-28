@@ -75,6 +75,7 @@
             <el-option label="Edge 离线" value="edge_offline" />
             <el-option label="OpenAI" value="openai" />
             <el-option label="智谱" value="zhipu" />
+            <el-option label="Minimax" value="minimax" />
           </el-select>
         </el-form-item>
         
@@ -126,7 +127,23 @@
             <el-input v-model="form.doubao.cluster" placeholder="请输入集群名称" />
           </el-form-item>
           <el-form-item label="音色" prop="doubao.voice">
-            <el-input v-model="form.doubao.voice" placeholder="请输入音色" />
+            <el-select 
+              v-model="form.doubao.voice" 
+              placeholder="请选择音色" 
+              style="width: 100%" 
+              filterable
+              :loading="voiceLoading"
+              :disabled="voiceLoading"
+              allow-create
+              default-first-option
+            >
+              <el-option 
+                v-for="option in voiceOptions" 
+                :key="option.value" 
+                :label="option.label" 
+                :value="option.value" 
+              />
+            </el-select>
           </el-form-item>
           <el-form-item label="API URL" prop="doubao.api_url">
             <el-input v-model="form.doubao.api_url" placeholder="请输入API URL" />
@@ -148,7 +165,23 @@
             <el-input v-model="form.doubao_ws.cluster" placeholder="请输入集群名称" />
           </el-form-item>
           <el-form-item label="音色" prop="doubao_ws.voice">
-            <el-input v-model="form.doubao_ws.voice" placeholder="请输入音色" />
+            <el-select 
+              v-model="form.doubao_ws.voice" 
+              placeholder="请选择音色" 
+              style="width: 100%" 
+              filterable
+              :loading="voiceLoading"
+              :disabled="voiceLoading"
+              allow-create
+              default-first-option
+            >
+              <el-option 
+                v-for="option in voiceOptions" 
+                :key="option.value" 
+                :label="option.label" 
+                :value="option.value" 
+              />
+            </el-select>
           </el-form-item>
           <el-form-item label="WebSocket主机" prop="doubao_ws.ws_host">
             <el-input v-model="form.doubao_ws.ws_host" placeholder="请输入WebSocket主机地址" />
@@ -161,7 +194,23 @@
         <!-- Edge TTS 配置 -->
         <template v-if="form.provider === 'edge'">
           <el-form-item label="音色" prop="edge.voice">
-            <el-input v-model="form.edge.voice" placeholder="请输入音色" />
+            <el-select 
+              v-model="form.edge.voice" 
+              placeholder="请选择音色" 
+              style="width: 100%" 
+              filterable
+              :loading="voiceLoading"
+              :disabled="voiceLoading"
+              allow-create
+              default-first-option
+            >
+              <el-option 
+                v-for="option in voiceOptions" 
+                :key="option.value" 
+                :label="option.label" 
+                :value="option.value" 
+              />
+            </el-select>
           </el-form-item>
           <el-form-item label="语速" prop="edge.rate">
             <el-input v-model="form.edge.rate" placeholder="请输入语速（如：+0%）" />
@@ -211,14 +260,20 @@
             <el-input v-model="form.zhipu.model" placeholder="glm-tts" />
           </el-form-item>
           <el-form-item label="音色" prop="zhipu.voice">
-            <el-select v-model="form.zhipu.voice" placeholder="请选择音色" style="width: 100%">
-              <el-option label="彤彤（默认音色）" value="tongtong" />
-              <el-option label="锤锤" value="chuichui" />
-              <el-option label="小陈" value="xiaochen" />
-              <el-option label="动动动物圈jam音色" value="jam" />
-              <el-option label="动动动物圈kazi音色" value="kazi" />
-              <el-option label="动动动物圈douji音色" value="douji" />
-              <el-option label="动动动物圈luodo音色" value="luodo" />
+            <el-select 
+              v-model="form.zhipu.voice" 
+              placeholder="请选择音色" 
+              style="width: 100%" 
+              filterable
+              :loading="voiceLoading"
+              :disabled="voiceLoading"
+            >
+              <el-option 
+                v-for="option in voiceOptions" 
+                :key="option.value" 
+                :label="option.label" 
+                :value="option.value" 
+              />
             </el-select>
           </el-form-item>
           <el-form-item label="响应格式" prop="zhipu.response_format">
@@ -247,6 +302,60 @@
           </el-form-item>
         </template>
 
+        <!-- Minimax TTS 配置 -->
+        <template v-if="form.provider === 'minimax'">
+          <el-form-item label="API Key" prop="minimax.api_key">
+            <el-input v-model="form.minimax.api_key" placeholder="请输入API Key" type="password" show-password />
+          </el-form-item>
+          <el-form-item label="模型" prop="minimax.model">
+            <el-input v-model="form.minimax.model" placeholder="speech-2.8-hd" />
+          </el-form-item>
+          <el-form-item label="音色" prop="minimax.voice">
+            <el-select 
+              v-model="form.minimax.voice" 
+              placeholder="请选择音色" 
+              style="width: 100%" 
+              filterable
+              :loading="voiceLoading"
+              :disabled="voiceLoading"
+              allow-create
+              default-first-option
+            >
+              <el-option 
+                v-for="option in voiceOptions" 
+                :key="option.value" 
+                :label="option.label" 
+                :value="option.value" 
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="语速" prop="minimax.speed">
+            <el-input-number v-model="form.minimax.speed" :min="0.5" :max="2.0" :step="0.1" style="width: 100%" placeholder="0.5-2.0，默认1.0" />
+          </el-form-item>
+          <el-form-item label="音量" prop="minimax.vol">
+            <el-input-number v-model="form.minimax.vol" :min="0" :max="2" :step="0.1" style="width: 100%" placeholder="0-2，默认1.0" />
+          </el-form-item>
+          <el-form-item label="音调" prop="minimax.pitch">
+            <el-input-number v-model="form.minimax.pitch" :min="-12" :max="12" :step="1" style="width: 100%" placeholder="-12到12，默认0" />
+          </el-form-item>
+          <el-form-item label="采样率" prop="minimax.sample_rate">
+            <el-input-number v-model="form.minimax.sample_rate" :min="8000" :max="48000" :step="1000" style="width: 100%" placeholder="默认32000" />
+          </el-form-item>
+          <el-form-item label="比特率" prop="minimax.bitrate">
+            <el-input-number v-model="form.minimax.bitrate" :min="32000" :max="320000" :step="16000" style="width: 100%" placeholder="默认128000" />
+          </el-form-item>
+          <el-form-item label="音频格式" prop="minimax.format">
+            <el-select v-model="form.minimax.format" placeholder="请选择音频格式" style="width: 100%">
+              <el-option label="MP3" value="mp3" />
+              <el-option label="WAV" value="wav" />
+              <el-option label="PCM" value="pcm" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="声道数" prop="minimax.channel">
+            <el-input-number v-model="form.minimax.channel" :min="1" :max="2" style="width: 100%" placeholder="默认1" />
+          </el-form-item>
+        </template>
+
         <!-- OpenAI TTS 配置 -->
         <template v-if="form.provider === 'openai'">
           <el-form-item label="API Key" prop="openai.api_key">
@@ -259,13 +368,20 @@
             <el-input v-model="form.openai.model" placeholder="请输入模型（默认：tts-1）" />
           </el-form-item>
           <el-form-item label="音色" prop="openai.voice">
-            <el-select v-model="form.openai.voice" placeholder="请选择音色" style="width: 100%">
-              <el-option label="alloy" value="alloy" />
-              <el-option label="echo" value="echo" />
-              <el-option label="fable" value="fable" />
-              <el-option label="onyx" value="onyx" />
-              <el-option label="nova" value="nova" />
-              <el-option label="shimmer" value="shimmer" />
+            <el-select 
+              v-model="form.openai.voice" 
+              placeholder="请选择音色" 
+              style="width: 100%" 
+              filterable
+              :loading="voiceLoading"
+              :disabled="voiceLoading"
+            >
+              <el-option 
+                v-for="option in voiceOptions" 
+                :key="option.value" 
+                :label="option.label" 
+                :value="option.value" 
+              />
             </el-select>
           </el-form-item>
           <el-form-item label="响应格式" prop="openai.response_format">
@@ -301,7 +417,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import api from '../../utils/api'
@@ -312,6 +428,10 @@ const saving = ref(false)
 const showDialog = ref(false)
 const editingConfig = ref(null)
 const formRef = ref()
+
+// 音色列表相关
+const voiceOptions = ref([])
+const voiceLoading = ref(false)
 
 const form = reactive({
   name: '',
@@ -379,6 +499,18 @@ const form = reactive({
     stream: true,
     encode_format: 'base64',
     frame_duration: 60
+  },
+  minimax: {
+    api_key: '',
+    model: 'speech-2.8-hd',
+    voice: 'male-qn-qingse',
+    speed: 1.0,
+    vol: 1.0,
+    pitch: 0,
+    sample_rate: 32000,
+    bitrate: 128000,
+    format: 'mp3',
+    channel: 1
   }
 })
 
@@ -449,6 +581,20 @@ const generateConfig = () => {
       config.encode_format = form.zhipu.encode_format || 'base64'
       config.frame_duration = form.zhipu.frame_duration
       break
+    case 'minimax':
+      // Minimax TTS 配置
+      config.provider = 'minimax'
+      config.api_key = form.minimax.api_key
+      config.model = form.minimax.model || 'speech-2.8-hd'
+      config.voice = form.minimax.voice || 'male-qn-qingse'
+      config.speed = form.minimax.speed || 1.0
+      config.vol = form.minimax.vol || 1.0
+      config.pitch = form.minimax.pitch || 0
+      config.sample_rate = form.minimax.sample_rate || 32000
+      config.bitrate = form.minimax.bitrate || 128000
+      config.format = form.minimax.format || 'mp3'
+      config.channel = form.minimax.channel || 1
+      break
   }
   
   return JSON.stringify(config)
@@ -482,7 +628,9 @@ const rules = {
   // OpenAI TTS 验证规则
   'openai.api_key': [{ required: true, message: '请输入API Key', trigger: 'blur' }],
   // 智谱 TTS 验证规则
-  'zhipu.api_key': [{ required: true, message: '请输入API Key', trigger: 'blur' }]
+  'zhipu.api_key': [{ required: true, message: '请输入API Key', trigger: 'blur' }],
+  // Minimax TTS 验证规则
+  'minimax.api_key': [{ required: true, message: '请输入API Key', trigger: 'blur' }]
 }
 
 const loadConfigs = async () => {
@@ -504,6 +652,9 @@ const editConfig = (config) => {
   form.provider = config.provider
   form.is_default = config.is_default
   form.enabled = config.enabled
+  
+  // 加载对应 provider 的音色列表
+  loadVoiceOptions(config.provider)
   
   // 解析配置JSON并填充到对应的表单字段
   try {
@@ -571,6 +722,18 @@ const editConfig = (config) => {
         form.zhipu.stream = configData.stream !== undefined ? configData.stream : true
         form.zhipu.encode_format = configData.encode_format || 'base64'
         form.zhipu.frame_duration = configData.frame_duration || 60
+        break
+      case 'minimax':
+        form.minimax.api_key = configData.api_key || ''
+        form.minimax.model = configData.model || 'speech-2.8-hd'
+        form.minimax.voice = configData.voice || 'male-qn-qingse'
+        form.minimax.speed = configData.speed || 1.0
+        form.minimax.vol = configData.vol || configData.volume || 1.0
+        form.minimax.pitch = configData.pitch || 0
+        form.minimax.sample_rate = configData.sample_rate || 32000
+        form.minimax.bitrate = configData.bitrate || 128000
+        form.minimax.format = configData.format || 'mp3'
+        form.minimax.channel = configData.channel || 1
         break
     }
   } catch (error) {
@@ -747,6 +910,18 @@ const resetForm = () => {
       volume: 1.0,
       stream: true,
       frame_duration: 60
+    },
+    minimax: {
+      api_key: '',
+      model: 'speech-2.8-hd',
+      voice: 'male-qn-qingse',
+      speed: 1.0,
+      vol: 1.0,
+      pitch: 0,
+      sample_rate: 32000,
+      bitrate: 128000,
+      format: 'mp3',
+      channel: 1
     }
   })
 }
@@ -762,6 +937,48 @@ const handleDialogClose = () => {
 const formatDate = (dateString) => {
   return new Date(dateString).toLocaleString('zh-CN')
 }
+
+// 加载音色列表
+const loadVoiceOptions = async (provider) => {
+  if (!provider) {
+    voiceOptions.value = []
+    return
+  }
+  
+  // 只有这些 provider 需要从后端获取音色列表
+  const providersWithVoices = ['minimax', 'edge', 'doubao', 'doubao_ws', 'zhipu', 'openai']
+  if (!providersWithVoices.includes(provider)) {
+    voiceOptions.value = []
+    return
+  }
+  
+  voiceLoading.value = true
+  try {
+    const response = await api.get(`/user/voice-options`, {
+      params: { provider }
+    })
+    voiceOptions.value = response.data.data || []
+  } catch (error) {
+    console.error('加载音色列表失败:', error)
+    voiceOptions.value = []
+  } finally {
+    voiceLoading.value = false
+  }
+}
+
+// 监听 provider 变化，自动加载对应的音色列表
+watch(() => form.provider, (newProvider) => {
+  if (showDialog.value) {
+    loadVoiceOptions(newProvider)
+  }
+}, { immediate: false })
+
+// 监听对话框打开，加载当前 provider 的音色列表
+watch(showDialog, (isOpen) => {
+  if (isOpen && form.provider) {
+    loadVoiceOptions(form.provider)
+  }
+})
 
 onMounted(() => {
   loadConfigs()
