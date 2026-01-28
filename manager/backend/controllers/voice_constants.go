@@ -299,6 +299,17 @@ var VoiceOptions = map[string][]VoiceOption{
 		{Value: "Jennifer", Label: "詹妮弗"},
 		{Value: "Ryan", Label: "甜茶"},
 	},
+
+	// 智谱 TTS 音色列表
+	"zhipu": {
+		{Value: "tongtong", Label: "彤彤（默认音色）"},
+		{Value: "chuichui", Label: "锤锤"},
+		{Value: "xiaochen", Label: "小陈"},
+		{Value: "jam", Label: "动动动物圈jam音色"},
+		{Value: "kazi", Label: "动动动物圈kazi音色"},
+		{Value: "douji", Label: "动动动物圈douji音色"},
+		{Value: "luodo", Label: "动动动物圈luodo音色"},
+	},
 }
 
 // GetVoiceOptionsByProvider 根据provider获取音色列表
