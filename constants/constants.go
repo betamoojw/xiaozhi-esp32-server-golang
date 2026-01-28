@@ -27,4 +27,5 @@ const (
 	TtsTypeXiaozhi     = "xiaozhi"
 	TtsTypeOpenAI      = "openai"
 	TtsTypeZhipu       = "zhipu"
+	TtsTypeMinimax     = "minimax"
 )
