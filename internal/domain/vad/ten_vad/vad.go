@@ -165,12 +165,15 @@ func (t *TenVAD) IsValid() bool {
 	return t.handle != nil
 }
 
-// createVADInstance 创建指定类型的VAD实例（内部实现）
-func createVADInstance(config map[string]interface{}) (VAD, error) {
+// AcquireVAD 创建并返回 TEN-VAD 实例（由全局资源池管理）
+func AcquireVAD(config map[string]interface{}) (VAD, error) {
 	return NewTenVAD(config)
 }
 
-// CreateVAD 创建指定类型的VAD实例（公共API）
-func CreateVAD(config map[string]interface{}) (VAD, error) {
-	return createVADInstance(config)
+// ReleaseVAD 释放 VAD 实例
+func ReleaseVAD(vad VAD) error {
+	if vad != nil {
+		return vad.Close()
+	}
+	return nil
 }
