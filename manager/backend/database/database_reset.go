@@ -6,16 +6,31 @@ import (
 	"xiaozhi/manager/backend/config"
 	"xiaozhi/manager/backend/models"
 
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
 // InitWithReset 初始化数据库并重置所有表（仅用于开发环境）
 func InitWithReset(cfg config.DatabaseConfig) *gorm.DB {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-		cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
+	storageType := cfg.GetStorageType()
+	var db *gorm.DB
+	var err error
 
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if storageType == "sqlite" {
+		if cfg.SQLite == nil {
+			log.Fatal("SQLite配置为空")
+		}
+		db, err = gorm.Open(sqlite.Open(cfg.SQLite.FilePath), &gorm.Config{})
+	} else {
+		if cfg.MySQL == nil {
+			log.Fatal("MySQL配置为空")
+		}
+		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+			cfg.MySQL.Username, cfg.MySQL.Password, cfg.MySQL.Host, cfg.MySQL.Port, cfg.MySQL.Database)
+		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	}
+
 	if err != nil {
 		log.Fatal("数据库连接失败:", err)
 	}
