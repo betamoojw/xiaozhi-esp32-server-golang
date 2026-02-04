@@ -1,3 +1,5 @@
+//go:build manager
+
 package main
 
 import (
@@ -24,7 +26,7 @@ var (
 	managerDB         *gorm.DB     // manager 使用的 DB，退出时关闭
 )
 
-// StartManagerHTTP 在本进程内启动 manager 的 HTTP 服务（方案 A：双端口）。是否调用由 main 根据 -manager-http-enable 决定。
+// StartManagerHTTP 在本进程内启动 manager 的 HTTP 服务（双端口）。是否调用由 main 根据 -manager-enable 决定。
 // configPath：manager 配置文件路径，空则使用默认路径
 func StartManagerHTTP(configPath string) {
 	if configPath == "" {

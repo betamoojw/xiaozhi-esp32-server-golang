@@ -181,6 +181,8 @@ func updateConfigFromAPI() error {
 			continue
 		}
 
+		log.Debugf("Load config from API: %+v", configMap)
+
 		// 使用viper.MergeConfigMap设置到viper
 		if err := viper.MergeConfigMap(configMap); err != nil {
 			retryCount++
