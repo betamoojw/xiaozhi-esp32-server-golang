@@ -138,8 +138,14 @@ func IsFinalTranscription(event *ServerEvent) bool {
 
 // GetTranscriptionText 获取转录文本
 func GetTranscriptionText(event *ServerEvent) string {
-	if event.Item != nil && event.Item.Transcription != nil {
+	if event == nil {
+		return ""
+	}
+	if event.Item != nil && event.Item.Transcription != nil && event.Item.Transcription.Text != "" {
 		return event.Item.Transcription.Text
+	}
+	if event.Transcript != "" {
+		return event.Transcript
 	}
 	return ""
 }
