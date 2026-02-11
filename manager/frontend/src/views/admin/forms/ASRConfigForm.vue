@@ -3,6 +3,7 @@
     <el-form-item label="提供商" prop="provider">
       <el-select v-model="model.provider" placeholder="请选择提供商" style="width: 100%" @change="onProviderChange">
         <el-option label="FunASR" value="funasr" />
+        <el-option label="Aliyun FunASR" value="aliyun_funasr" />
         <el-option label="豆包" value="doubao" />
       </el-select>
     </el-form-item>
@@ -60,6 +61,40 @@
           <el-icon><InfoFilled /></el-icon>
           确保FunASR已进行相应配置
         </div>
+      </el-form-item>
+    </div>
+    <div v-if="model.provider === 'aliyun_funasr'">
+      <el-form-item label="API Key" prop="aliyun_funasr.api_key">
+        <el-input v-model="model.aliyun_funasr.api_key" type="password" show-password placeholder="可以为空，读取DASHSCOPE_API_KEY" />
+        <div class="form-tip">
+          <el-icon><InfoFilled /></el-icon>
+          可以为空，默认回退DASHSCOPE_API_KEY
+        </div>
+      </el-form-item>
+      <el-form-item label="WS URL" prop="aliyun_funasr.ws_url">
+        <el-input v-model="model.aliyun_funasr.ws_url" placeholder="wss://dashscope.aliyuncs.com/api-ws/v1/inference/" />
+      </el-form-item>
+      <el-form-item label="模型" prop="aliyun_funasr.model">
+        <el-input v-model="model.aliyun_funasr.model" placeholder="fun-asr-realtime" />
+      </el-form-item>
+      <el-form-item label="音频格式" prop="aliyun_funasr.format">
+        <el-select v-model="model.aliyun_funasr.format" placeholder="请选择格式" style="width: 100%">
+          <el-option label="pcm" value="pcm" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="采样率" prop="aliyun_funasr.sample_rate">
+        <el-select v-model="model.aliyun_funasr.sample_rate" placeholder="请选择采样率" style="width: 100%">
+          <el-option label="16000" :value="16000" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="词表ID" prop="aliyun_funasr.vocabulary_id">
+        <el-input v-model="model.aliyun_funasr.vocabulary_id" placeholder="可以为空" />
+      </el-form-item>
+      <el-form-item label="去口头语" prop="aliyun_funasr.disfluency_removal_enabled">
+        <el-switch v-model="model.aliyun_funasr.disfluency_removal_enabled" />
+      </el-form-item>
+      <el-form-item label="超时时间(秒)" prop="aliyun_funasr.timeout">
+        <el-input-number v-model="model.aliyun_funasr.timeout" :min="1" style="width: 100%" />
       </el-form-item>
     </div>
     <div v-if="model.provider === 'doubao'">
@@ -123,6 +158,7 @@ function onProviderChange() {
 function getJsonData() {
   const m = props.model
   if (m.provider === 'funasr') return JSON.stringify(m.funasr || {})
+  if (m.provider === 'aliyun_funasr') return JSON.stringify(m.aliyun_funasr || {})
   if (m.provider === 'doubao') return JSON.stringify(m.doubao || {})
   return '{}'
 }

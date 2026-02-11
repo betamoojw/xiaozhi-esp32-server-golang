@@ -37,6 +37,8 @@ func NewAsrProvider(asrType string, config map[string]interface{}) (AsrProvider,
 	switch asrType {
 	case constants.AsrTypeFunAsr:
 		return NewFunasrAdapter(config)
+	case constants.AsrTypeAliyunFunASR:
+		return NewAliyunFunASRAdapter(config)
 	case constants.AsrTypeDoubao:
 		log.Info("使用 豆包ASR 提供者")
 		provider, err := doubao.NewDoubaoV2Adapter(config)
@@ -47,6 +49,6 @@ func NewAsrProvider(asrType string, config map[string]interface{}) (AsrProvider,
 		}
 		return provider, err
 	default:
-		return nil, fmt.Errorf("不支持的ASR引擎类型: %s，目前仅支持 'funasr', 'doubao'", asrType)
+		return nil, fmt.Errorf("不支持的ASR引擎类型: %s，目前仅支持 'funasr', 'aliyun_funasr', 'doubao'", asrType)
 	}
 }
