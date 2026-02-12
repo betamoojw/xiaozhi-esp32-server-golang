@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -33,7 +32,7 @@ func NewAliyunQwen3ASR(config Config) (*AliyunQwen3ASR, error) {
 		return nil, fmt.Errorf("ws_url is empty")
 	}
 
-    // Validate audio format.
+	// Validate audio format.
 	format := config.Format
 	if format == "" {
 		format = "pcm"
@@ -42,7 +41,7 @@ func NewAliyunQwen3ASR(config Config) (*AliyunQwen3ASR, error) {
 		return nil, fmt.Errorf("aliyun qwen3 only supports pcm or opus format, got: %s", format)
 	}
 
-    // Validate sample rate.
+	// Validate sample rate.
 	if config.SampleRate == 0 {
 		config.SampleRate = 16000
 	}
@@ -53,7 +52,7 @@ func NewAliyunQwen3ASR(config Config) (*AliyunQwen3ASR, error) {
 		return nil, fmt.Errorf("main program currently only supports 16000 sample_rate")
 	}
 
-    // Validate language.
+	// Validate language.
 	if config.Language == "" {
 		config.Language = "zh"
 	}
@@ -69,11 +68,14 @@ func NewAliyunQwen3ASR(config Config) (*AliyunQwen3ASR, error) {
 // StreamingRecognize performs streaming ASR recognition.
 func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-chan []float32) (chan types.StreamingResult, error) {
 	a.taskMu.Lock()
+	var unlockOnce sync.Once
 	unlock := func() {
-		a.taskMu.Unlock()
+		unlockOnce.Do(func() {
+			a.taskMu.Unlock()
+		})
 	}
 
-    // Resolve API key.
+	// Resolve API key.
 	apiKey := a.config.APIKey
 	if apiKey == "" {
 		apiKey = os.Getenv("DASHSCOPE_API_KEY")
@@ -83,19 +85,19 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 		return nil, fmt.Errorf("missing api key: DASHSCOPE_API_KEY is empty")
 	}
 
-    // Build WebSocket URL.
+	// Build WebSocket URL.
 	wsURL := a.config.WsURL
 	if a.config.Model != "" {
 		wsURL = fmt.Sprintf("%s?model=%s", wsURL, a.config.Model)
 	}
 
-    // Build WebSocket request headers.
+	// Build WebSocket request headers.
 	header := make(http.Header)
 	header.Add("Authorization", fmt.Sprintf("Bearer %s", apiKey))
 	header.Add("OpenAI-Beta", "realtime=v1")
 	var err error
 
-    // Establish (or reuse) the WebSocket connection.
+	// Establish (or reuse) the WebSocket connection.
 	a.connMu.Lock()
 	conn := a.conn
 	a.connMu.Unlock()
@@ -160,7 +162,7 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 		}
 	}
 
-    // Start receiver goroutine.
+	// Start receiver goroutine.
 	go func() {
 		defer closeDone()
 		defer close(resultChan)
@@ -193,17 +195,17 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 				continue
 			}
 
-            // Log full incoming event.
+			// Log full incoming event.
 			if jsonStr := string(message); len(jsonStr) > 500 {
 				log.Debugf("[aliyun_qwen3] received event %s (truncated): %s...", event.Type, jsonStr[:500])
 			} else {
 				log.Debugf("[aliyun_qwen3] received event %s: %s", event.Type, jsonStr)
 			}
 
-            // Handle event types.
+			// Handle event types.
 			switch event.Type {
 			case "session.updated":
-                // Session updated successfully.
+				// Session updated successfully.
 				log.Debugf("[aliyun_qwen3] session.updated received")
 				if !sessionUpdated {
 					sessionUpdated = true
@@ -214,15 +216,15 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 				}
 
 			case "input_audio_buffer.speech_started":
-                // VAD detected speech start.
+				// VAD detected speech start.
 				log.Debugf("[aliyun_qwen3] speech_started detected")
 
 			case "input_audio_buffer.speech_stopped":
-                // VAD detected speech end.
+				// VAD detected speech end.
 				log.Debugf("[aliyun_qwen3] speech_stopped detected")
 
 			case "input_audio_buffer.committed":
-                // Audio buffer commit acknowledged.
+				// Audio buffer commit acknowledged.
 				log.Debugf("[aliyun_qwen3] input_audio_buffer.committed received")
 				if !bufferCommitted {
 					bufferCommitted = true
@@ -233,11 +235,11 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 				}
 
 			case "conversation.item.created":
-                // Conversation item created.
+				// Conversation item created.
 				log.Debugf("[aliyun_qwen3] conversation item created")
 
 			case "conversation.item.input_audio_transcription.text":
-                // Realtime transcription result.
+				// Realtime transcription result.
 				text := GetTranscriptionText(&event)
 				log.Debugf("[aliyun_qwen3] transcription.text (partial): %q", text)
 				if text != "" {
@@ -250,7 +252,7 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 				}
 
 			case "conversation.item.input_audio_transcription.completed":
-                // Final transcription result.
+				// Final transcription result.
 				text := GetTranscriptionText(&event)
 				log.Debugf("[aliyun_qwen3] transcription.completed (final): %q", text)
 				if !finalResultReceived {
@@ -268,38 +270,18 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 				})
 
 			case "session.finished":
-                // Session finished.
+				// Session finished.
 				log.Debugf("[aliyun_qwen3] session.finished received")
 				sessionFinished = true
 				return
 
 			case "error":
-                // Error event.
+				// Error event.
 				errMsg := "unknown error"
 				if event.Error != nil {
 					errMsg = event.Error.Message
 				}
 				log.Debugf("[aliyun_qwen3] error event: %s", errMsg)
-                // In config-test scenarios, if the error is "committing input audio buffer",
-                // treat it as invalid audio and return an empty final result instead of an error.
-				if strings.Contains(errMsg, "committing input audio buffer") ||
-					strings.Contains(errMsg, "invalid audio") {
-					log.Debugf("[aliyun_qwen3] invalid audio detected; returning empty result (config test)")
-					if !finalResultReceived {
-						finalResultReceived = true
-						select {
-						case finalResultChan <- struct{}{}:
-						default:
-						}
-					}
-					sendResult(types.StreamingResult{
-						Text:    "",
-						IsFinal: true,
-						AsrType: constants.AsrTypeAliyunQwen3,
-						Mode:    "online",
-					})
-					return
-				}
 				if !finalResultReceived {
 					finalResultReceived = true
 					select {
@@ -314,13 +296,13 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 				})
 				return
 			default:
-                // Log unhandled event type.
+				// Log unhandled event type.
 				log.Debugf("[aliyun_qwen3] unhandled event type: %s", event.Type)
 			}
 		}
 	}()
 
-    // Release the task lock after done.
+	// Release the task lock after done.
 	go func() {
 		<-done
 		unlock()
@@ -331,7 +313,7 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 	case <-ctx.Done():
 		log.Debugf("[aliyun_qwen3] context cancelled before sending audio")
 		a.resetConn(conn)
-		unlock()
+		closeDone()
 		return nil, ctx.Err()
 	default:
 	}
@@ -340,11 +322,11 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 			log.Debugf("[aliyun_qwen3] sender exiting: sent %d chunks, %d bytes total", audioChunkCount, totalAudioBytes)
 		}()
 		defer func() {
-            // Wait for the final transcription (max 5s).
+			// Wait for the final transcription (max 5s).
 			log.Debugf("[aliyun_qwen3] waiting for final transcription...")
 			waitForResult := true
 			if a.config.AutoEnd {
-                // VAD mode: wait for final result.
+				// VAD mode: wait for final result.
 				select {
 				case <-finalResultChan:
 					log.Debugf("[aliyun_qwen3] final transcription received; sending session.finish")
@@ -355,7 +337,7 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 					waitForResult = false
 				}
 			} else {
-                // Manual mode: wait for final result.
+				// Manual mode: wait for final result.
 				select {
 				case <-finalResultChan:
 					log.Debugf("[aliyun_qwen3] final transcription received; sending session.finish")
@@ -371,7 +353,7 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 				return
 			}
 
-            // Send session.finish.
+			// Send session.finish.
 			finishEvent := NewSessionFinishEvent()
 			log.Debugf("[aliyun_qwen3] sending session.finish")
 			if bytes, err := json.Marshal(finishEvent); err == nil {
@@ -381,13 +363,13 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 					log.Debugf("[aliyun_qwen3] session.finish payload: %s", jsonStr)
 				}
 				if err := conn.WriteMessage(websocket.TextMessage, bytes); err != nil {
-				a.resetConn(conn)
+					a.resetConn(conn)
 					log.Debugf("[aliyun_qwen3] session.finish send failed: %v", err)
 				} else {
 					log.Debugf("[aliyun_qwen3] session.finish sent")
 				}
 			}
-            // Wait for session.finished or timeout.
+			// Wait for session.finished or timeout.
 			finishWait := a.config.Timeout
 			if finishWait <= 0 {
 				finishWait = 10 * time.Second
@@ -415,10 +397,10 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 
 			case pcm, ok := <-audioStream:
 				if !ok {
-                    // Audio stream ended.
+					// Audio stream ended.
 					log.Debugf("[aliyun_qwen3] audio stream ended, auto_end=%v, sent %d chunks, %d bytes", a.config.AutoEnd, audioChunkCount, totalAudioBytes)
 					if !a.config.AutoEnd {
-                        // Manual mode requires input_audio_buffer.commit.
+						// Manual mode requires input_audio_buffer.commit.
 						commitEvent := NewAudioCommitEvent()
 						log.Debugf("[aliyun_qwen3] sending input_audio_buffer.commit")
 						if bytes, err := json.Marshal(commitEvent); err == nil {
@@ -428,14 +410,14 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 								log.Debugf("[aliyun_qwen3] commit payload: %s", jsonStr)
 							}
 							if err := conn.WriteMessage(websocket.TextMessage, bytes); err != nil {
-							a.resetConn(conn)
+								a.resetConn(conn)
 								sendErrMu.Lock()
 								sendErr = fmt.Errorf("send commit failed: %w", err)
 								sendErrMu.Unlock()
 								log.Debugf("[aliyun_qwen3] commit send failed: %v", err)
 							} else {
 								log.Debugf("[aliyun_qwen3] commit sent; waiting for input_audio_buffer.committed")
-                                // Wait for input_audio_buffer.committed (max 5s).
+								// Wait for input_audio_buffer.committed (max 5s).
 								select {
 								case <-bufferCommittedChan:
 									log.Debugf("[aliyun_qwen3] input_audio_buffer.committed received")
@@ -452,12 +434,12 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 					return
 				}
 
-                // Convert audio to PCM16 bytes.
+				// Convert audio to PCM16 bytes.
 				audioBytes := float32SliceToPCM16Bytes(pcm)
 				audioChunkCount++
 				totalAudioBytes += len(audioBytes)
 
-                // Send audio append event.
+				// Send audio append event.
 				appendEvent := NewAudioAppendEvent(audioBytes)
 				if bytes, err := json.Marshal(appendEvent); err != nil {
 					sendErrMu.Lock()
@@ -467,17 +449,17 @@ func (a *AliyunQwen3ASR) StreamingRecognize(ctx context.Context, audioStream <-c
 					return
 				} else {
 					if err := conn.WriteMessage(websocket.TextMessage, bytes); err != nil {
-					a.resetConn(conn)
+						a.resetConn(conn)
 						sendErrMu.Lock()
 						sendErr = fmt.Errorf("send audio failed: %w", err)
 						sendErrMu.Unlock()
 						log.Debugf("[aliyun_qwen3] send audio failed: chunk #%d: %v", audioChunkCount, err)
 						return
 					}
-                    // Log every 10th chunk.
-					if audioChunkCount%10 == 1 {
+					// Log every 10th chunk.
+					/*if audioChunkCount%10 == 1 {
 						log.Debugf("[aliyun_qwen3] sent audio chunk #%d (%d bytes), total %d bytes", audioChunkCount, len(audioBytes), totalAudioBytes)
-					}
+					}*/
 				}
 			}
 		}
@@ -570,4 +552,3 @@ func float32SliceToPCM16Bytes(samples []float32) []byte {
 	util.Float32ToPCMBytes(samples, data)
 	return data
 }
-

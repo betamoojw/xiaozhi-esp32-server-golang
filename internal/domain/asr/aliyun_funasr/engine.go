@@ -87,8 +87,11 @@ func (a *AliyunFunASR) invalidateConn() {
 // StreamingRecognize performs streaming ASR recognition.
 func (a *AliyunFunASR) StreamingRecognize(ctx context.Context, audioStream <-chan []float32) (chan types.StreamingResult, error) {
 	a.taskMu.Lock()
+	var unlockOnce sync.Once
 	unlock := func() {
-		a.taskMu.Unlock()
+		unlockOnce.Do(func() {
+			a.taskMu.Unlock()
+		})
 	}
 
 	conn, err := a.getConn(ctx)
