@@ -380,6 +380,7 @@ func (dc *DeviceMcpSession) GetToolByName(toolName string) (tool tool.InvokableT
 	dc.wsEndPointMcp.Range(func(_, value interface{}) bool {
 		mcpInstance := value.(*McpClientInstance)
 		mcpInstance.toolsMux.RLock()
+		logger.Infof("wsEndPointMcp 工具列表: %+v", mcpInstance.tools)
 		if tool, ok = mcpInstance.tools[toolName]; ok {
 			mcpInstance.toolsMux.RUnlock()
 			return false
@@ -390,8 +391,10 @@ func (dc *DeviceMcpSession) GetToolByName(toolName string) (tool tool.InvokableT
 	if ok {
 		return tool, true
 	}
+
 	if dc.iotOverMcp != nil {
 		dc.iotOverMcp.toolsMux.RLock()
+		logger.Infof("iotOverMcp 工具列表: %+v", dc.iotOverMcp.tools)
 		if tool, ok = dc.iotOverMcp.tools[toolName]; ok {
 			dc.iotOverMcp.toolsMux.RUnlock()
 			return tool, true

@@ -23,7 +23,7 @@ func GetToolByName(deviceId string, agentId string, toolName string) (tool.Invok
 
 	// 最后从设备MCP客户端池获取
 	tool, ok = mcpClientPool.GetToolByDeviceId(deviceId, toolName)
-	if !ok {
+	if ok {
 		return tool, true
 	}
 	// 兼容 AgentID 上报的 MCP 工具
