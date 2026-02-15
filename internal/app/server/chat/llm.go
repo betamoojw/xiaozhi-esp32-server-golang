@@ -44,6 +44,13 @@ const (
 	fullTextKey          contextKey    = iota
 )
 
+const (
+	interruptExtraKey      = "interrupt"
+	interruptByExtraKey    = "interrupt_by"
+	interruptStageExtraKey = "interrupt_stage"
+	interruptContentSuffix = " [用户打断]"
+)
+
 // GetLastMessageID 获取最近保存的消息的 MessageID（用于两阶段保存）
 func (l *LLMManager) GetLastMessageID(role string) (string, bool) {
 	l.lastMessageIDMu.RLock()
@@ -324,24 +331,51 @@ func (l *LLMManager) HandleLLMResponseChannelSync(ctx context.Context, userMessa
 func (l *LLMManager) handleLLMResponse(ctx context.Context, userMessage *schema.Message, llmResponseChannel chan llm_common.LLMResponseStruct) (bool, error) {
 	log.Debugf("handleLLMResponse start")
 	defer log.Debugf("handleLLMResponse end")
+
+	// 从 context 中获取 fullText（用于聊天历史）
+	fullText := ctx.Value(fullTextKey).(*strings.Builder)
+	state := l.clientState
+	// toolCalls 使用局部变量（内部工具调用逻辑，不涉及聊天历史）
+	var toolCalls []schema.ToolCall
+	assistantSaved := false
+
+	saveInterruptedAssistant := func() {
+		if assistantSaved {
+			return
+		}
+		if ctx.Err() == nil {
+			return
+		}
+		text := strings.TrimSpace(fullText.String())
+		if text == "" {
+			return
+		}
+		msg := schema.AssistantMessage(text, nil)
+		msg.Extra = map[string]any{
+			interruptExtraKey:      true,
+			interruptByExtraKey:    "user",
+			interruptStageExtraKey: "llm",
+		}
+		if err := l.AddLlmMessage(ctx, msg); err != nil {
+			log.Errorf("保存打断助手消息失败: %v", err)
+			return
+		}
+		assistantSaved = true
+	}
+
 	select {
 	case <-ctx.Done():
+		saveInterruptedAssistant()
 		log.Debugf("handleLLMResponse ctx done, return")
 		return false, nil
 	default:
 	}
 
-	state := l.clientState
-
-	// 从 context 中获取 fullText（用于聊天历史）
-	fullText := ctx.Value(fullTextKey).(*strings.Builder)
-	// toolCalls 使用局部变量（内部工具调用逻辑，不涉及聊天历史）
-	var toolCalls []schema.ToolCall
-
 	for {
 		select {
 		case <-ctx.Done():
 			// 上下文已取消，优先处理取消逻辑
+			saveInterruptedAssistant()
 			log.Infof("%s 上下文已取消，停止处理LLM响应, context done, exit", state.DeviceID)
 			return false, nil
 		default:
@@ -397,6 +431,8 @@ func (l *LLMManager) handleLLMResponse(ctx context.Context, userMessage *schema.
 						if strings.TrimSpace(strFullText) != "" || len(toolCalls) > 0 {
 							if err := l.AddLlmMessage(ctx, schema.AssistantMessage(strFullText, toolCalls)); err != nil {
 								log.Errorf("保存助手消息失败: %v", err)
+							} else {
+								assistantSaved = true
 							}
 						}
 					}
@@ -422,6 +458,7 @@ func (l *LLMManager) handleLLMResponse(ctx context.Context, userMessage *schema.
 				}
 			case <-ctx.Done():
 				// 上下文已取消，退出协程
+				saveInterruptedAssistant()
 				log.Infof("%s 上下文已取消，停止处理LLM响应, context done, exit", state.DeviceID)
 				return false, nil
 			}
@@ -1050,6 +1087,9 @@ func (l *LLMManager) AddLlmMessage(ctx context.Context, msg *schema.Message) err
 func (l *LLMManager) GetMessages(ctx context.Context, userMessage *schema.Message, count int, speakerResult *speaker.IdentifyResult) []*schema.Message {
 	//从dialogue中获取
 	messageList := l.clientState.GetMessages(count)
+	if userMessage != nil {
+		messageList = trimTrailingUserMessages(messageList)
+	}
 
 	// 构建 system prompt
 	systemPrompt := l.clientState.SystemPrompt
@@ -1102,7 +1142,11 @@ func (l *LLMManager) GetMessages(ctx context.Context, userMessage *schema.Messag
 			log.Debugf("过滤掉空的assistant消息，避免发送给LLM API")
 			continue
 		}
-		retMessage = append(retMessage, msg)
+		msgCopy := cloneMessageForRequest(msg)
+		if isInterruptedMessage(msgCopy) {
+			msgCopy.Content = decorateInterruptedContent(msgCopy.Content)
+		}
+		retMessage = append(retMessage, msgCopy)
 	}
 	if userMessage != nil {
 		// 检查 retMessage 的最后一条消息是否已经是相同的用户消息，避免重复添加
@@ -1120,4 +1164,70 @@ func (l *LLMManager) GetMessages(ctx context.Context, userMessage *schema.Messag
 		}
 	}
 	return retMessage
+}
+
+func trimTrailingUserMessages(messages []*schema.Message) []*schema.Message {
+	end := len(messages)
+	for end > 0 {
+		msg := messages[end-1]
+		if msg == nil || msg.Role != schema.User {
+			break
+		}
+		end--
+	}
+	return messages[:end]
+}
+
+func isInterruptedMessage(msg *schema.Message) bool {
+	if msg == nil || msg.Extra == nil {
+		return false
+	}
+	v, ok := msg.Extra[interruptExtraKey]
+	if !ok || v == nil {
+		return false
+	}
+	switch t := v.(type) {
+	case bool:
+		return t
+	case string:
+		return strings.EqualFold(strings.TrimSpace(t), "true")
+	default:
+		return false
+	}
+}
+
+func decorateInterruptedContent(content string) string {
+	if strings.TrimSpace(content) == "" {
+		return content
+	}
+	if strings.HasSuffix(content, interruptContentSuffix) {
+		return content
+	}
+	return content + interruptContentSuffix
+}
+
+func cloneMessageForRequest(msg *schema.Message) *schema.Message {
+	if msg == nil {
+		return nil
+	}
+	msgCopy := *msg
+
+	if msg.ToolCalls != nil {
+		msgCopy.ToolCalls = append([]schema.ToolCall(nil), msg.ToolCalls...)
+	}
+	if msg.MultiContent != nil {
+		msgCopy.MultiContent = append([]schema.ChatMessagePart(nil), msg.MultiContent...)
+	}
+	if msg.Extra != nil {
+		msgCopy.Extra = make(map[string]any, len(msg.Extra))
+		for k, v := range msg.Extra {
+			msgCopy.Extra[k] = v
+		}
+	}
+	if msg.ResponseMeta != nil {
+		respMetaCopy := *msg.ResponseMeta
+		msgCopy.ResponseMeta = &respMetaCopy
+	}
+
+	return &msgCopy
 }
