@@ -93,12 +93,27 @@ func GetWsEndpointMcpTools(agentId string) (map[string]tool.InvokableTool, error
 	return mcpClientPool.GetWsEndpointMcpTools(agentId)
 }
 
-// GetReportedToolsByDeviceIdAndAgentId 仅获取设备/智能体上报的MCP工具（不包含本地与全局MCP）
+// GetReportedToolsByDeviceIdAndAgentId 仅获取设备上报的MCP工具（不包含本地、全局、智能体维度）
 func GetReportedToolsByDeviceIdAndAgentId(deviceId string, agentId string) (map[string]tool.InvokableTool, error) {
-	return mcpClientPool.GetAllToolsByDeviceIdAndAgentId(deviceId, agentId)
+	_ = agentId
+	retTools := make(map[string]tool.InvokableTool)
+	if deviceId == "" {
+		return retTools, nil
+	}
+
+	client := mcpClientPool.GetMcpClient(deviceId)
+	if client == nil {
+		return retTools, nil
+	}
+
+	for toolName, invokable := range client.GetTools() {
+		retTools[toolName] = invokable
+	}
+
+	return retTools, nil
 }
 
-// GetReportedToolByName 仅在设备/智能体上报的MCP工具中查找并返回
+// GetReportedToolByName 仅在设备上报的MCP工具中查找并返回
 func GetReportedToolByName(deviceId string, agentId string, toolName string) (tool.InvokableTool, bool) {
 	reportedTools, err := GetReportedToolsByDeviceIdAndAgentId(deviceId, agentId)
 	if err != nil {
