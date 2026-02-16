@@ -247,20 +247,6 @@
           </div>
         </div>
 
-        <el-divider />
-        <el-form :model="mcpCallForm" label-width="90px">
-          <el-form-item label="工具">
-            <el-select v-model="mcpCallForm.tool_name" placeholder="请选择工具" style="width: 100%" @change="handleMcpToolChange">
-              <el-option v-for="tool in mcpTools" :key="tool.name" :label="tool.name" :value="tool.name" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="参数JSON">
-            <el-input v-model="mcpCallForm.argumentsText" type="textarea" :rows="6" placeholder='例如: {"query":"hello"}' />
-          </el-form-item>
-        </el-form>
-        <el-button type="primary" @click="callAgentMcpTool" :loading="callingTool">调用工具</el-button>
-        <div class="mcp-result-box">{{ mcpCallResult || '暂无调用结果' }}</div>
-
         <el-alert
           title="接入点信息"
           description="这是智能体的MCP WebSocket接入点URL，可用于设备连接"
@@ -276,6 +262,20 @@
             {{ mcpEndpointData.endpoint }}
           </div>
         </div>
+
+        <el-divider />
+        <el-form :model="mcpCallForm" label-width="90px">
+          <el-form-item label="工具">
+            <el-select v-model="mcpCallForm.tool_name" placeholder="请选择工具" style="width: 100%" @change="handleMcpToolChange">
+              <el-option v-for="tool in mcpTools" :key="tool.name" :label="tool.name" :value="tool.name" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="参数JSON">
+            <el-input v-model="mcpCallForm.argumentsText" type="textarea" :rows="6" placeholder='例如: {"query":"hello"}' />
+          </el-form-item>
+        </el-form>
+        <el-button type="primary" @click="callAgentMcpTool" :loading="callingTool">调用工具</el-button>
+        <div class="mcp-result-box">{{ mcpCallResult || '暂无调用结果' }}</div>
       </div>
       
       <template #footer>
