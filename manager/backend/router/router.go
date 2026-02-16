@@ -135,6 +135,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				// MCP接入点
 				user.GET("/agents/:id/mcp-endpoint", userController.GetAgentMCPEndpoint)
 				user.GET("/agents/:id/mcp-tools", userController.GetAgentMcpTools)
+				user.POST("/agents/:id/mcp-call", userController.CallAgentMcpTool)
+				user.GET("/devices/:id/mcp-tools", userController.GetDeviceMcpTools)
+				user.POST("/devices/:id/mcp-call", userController.CallDeviceMcpTool)
 
 				// 消息注入
 				user.POST("/devices/inject-message", userController.InjectMessage)
@@ -273,6 +276,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.DELETE("/agents/:id", adminController.DeleteAgent)
 				admin.GET("/agents/:id/mcp-endpoint", adminController.GetAgentMCPEndpoint)
 				admin.GET("/agents/:id/mcp-tools", adminController.GetAgentMcpTools)
+				admin.POST("/agents/:id/mcp-call", adminController.CallAgentMcpTool)
+				admin.GET("/devices/:id/mcp-tools", adminController.GetDeviceMcpTools)
+				admin.POST("/devices/:id/mcp-call", adminController.CallDeviceMcpTool)
 
 				// 用户管理
 				admin.GET("/users", adminController.GetUsers)

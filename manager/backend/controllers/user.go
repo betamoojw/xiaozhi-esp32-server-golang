@@ -20,7 +20,9 @@ import (
 type UserController struct {
 	DB                  *gorm.DB
 	WebSocketController interface {
-		RequestMcpToolsFromClient(ctx context.Context, agentID string) ([]string, error)
+		RequestMcpToolDetailsFromClient(ctx context.Context, agentID string) ([]MCPTool, error)
+		RequestDeviceMcpToolDetailsFromClient(ctx context.Context, deviceID string) ([]MCPTool, error)
+		CallMcpToolFromClient(ctx context.Context, body map[string]interface{}) (map[string]interface{}, error)
 		InjectMessageToDevice(ctx context.Context, deviceID, message string, skipLlm bool) error
 	}
 }
@@ -572,6 +574,98 @@ func (uc *UserController) GetTTSConfigs(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": configs})
+}
+
+// GetDeviceMcpTools 获取设备维度MCP工具列表（用户版本）
+func (uc *UserController) GetDeviceMcpTools(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	deviceID := c.Param("id")
+	if deviceID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "device_id parameter is required"})
+		return
+	}
+
+	var device models.Device
+	if err := uc.DB.Where("id = ? AND user_id = ?", deviceID, userID).First(&device).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "设备不存在或不属于当前用户"})
+		return
+	}
+
+	tools, err := uc.WebSocketController.RequestDeviceMcpToolDetailsFromClient(context.Background(), device.DeviceName)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"data": gin.H{"tools": []interface{}{}}})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"tools": tools}})
+}
+
+// CallAgentMcpTool 调用智能体维度MCP工具（用户版本）
+func (uc *UserController) CallAgentMcpTool(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	agentID := c.Param("id")
+
+	var req struct {
+		ToolName  string                 `json:"tool_name" binding:"required"`
+		Arguments map[string]interface{} `json:"arguments"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	var agent models.Agent
+	if err := uc.DB.Where("id = ? AND user_id = ?", agentID, userID).First(&agent).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "智能体不存在或不属于当前用户"})
+		return
+	}
+
+	body := map[string]interface{}{
+		"agent_id":  agentID,
+		"tool_name": req.ToolName,
+		"arguments": req.Arguments,
+	}
+	result, err := uc.WebSocketController.CallMcpToolFromClient(context.Background(), body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "调用MCP工具失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+// CallDeviceMcpTool 调用设备维度MCP工具（用户版本）
+func (uc *UserController) CallDeviceMcpTool(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	deviceID := c.Param("id")
+
+	var req struct {
+		ToolName  string                 `json:"tool_name" binding:"required"`
+		Arguments map[string]interface{} `json:"arguments"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	var device models.Device
+	if err := uc.DB.Where("id = ? AND user_id = ?", deviceID, userID).First(&device).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "设备不存在或不属于当前用户"})
+		return
+	}
+
+	body := map[string]interface{}{
+		"device_id": device.DeviceName,
+		"tool_name": req.ToolName,
+		"arguments": req.Arguments,
+	}
+	result, err := uc.WebSocketController.CallMcpToolFromClient(context.Background(), body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "调用MCP工具失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
 // GetAgentMCPEndpoint 获取智能体的MCP接入点URL（用户版本）

@@ -2315,6 +2315,93 @@ func (ac *AdminController) GetAgents(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
+// GetDeviceMcpTools 获取设备维度MCP工具列表（管理员版本）
+func (ac *AdminController) GetDeviceMcpTools(c *gin.Context) {
+	deviceID := c.Param("id")
+	if deviceID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "device_id parameter is required"})
+		return
+	}
+
+	var device models.Device
+	if err := ac.DB.Where("id = ?", deviceID).First(&device).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "设备不存在"})
+		return
+	}
+
+	tools, err := ac.WebSocketController.RequestDeviceMcpToolDetailsFromClient(context.Background(), device.DeviceName)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"data": gin.H{"tools": []interface{}{}}})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"tools": tools}})
+}
+
+// CallAgentMcpTool 调用智能体维度MCP工具（管理员版本）
+func (ac *AdminController) CallAgentMcpTool(c *gin.Context) {
+	agentID := c.Param("id")
+	var req struct {
+		ToolName  string                 `json:"tool_name" binding:"required"`
+		Arguments map[string]interface{} `json:"arguments"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	var agent models.Agent
+	if err := ac.DB.Where("id = ?", agentID).First(&agent).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "智能体不存在"})
+		return
+	}
+
+	body := map[string]interface{}{
+		"agent_id":  agentID,
+		"tool_name": req.ToolName,
+		"arguments": req.Arguments,
+	}
+	result, err := ac.WebSocketController.CallMcpToolFromClient(context.Background(), body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "调用MCP工具失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+// CallDeviceMcpTool 调用设备维度MCP工具（管理员版本）
+func (ac *AdminController) CallDeviceMcpTool(c *gin.Context) {
+	deviceID := c.Param("id")
+	var req struct {
+		ToolName  string                 `json:"tool_name" binding:"required"`
+		Arguments map[string]interface{} `json:"arguments"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	var device models.Device
+	if err := ac.DB.Where("id = ?", deviceID).First(&device).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "设备不存在"})
+		return
+	}
+
+	body := map[string]interface{}{
+		"device_id": device.DeviceName,
+		"tool_name": req.ToolName,
+		"arguments": req.Arguments,
+	}
+	result, err := ac.WebSocketController.CallMcpToolFromClient(context.Background(), body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "调用MCP工具失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
 // GetAgentMCPEndpoint 获取智能体的MCP接入点URL
 func (ac *AdminController) GetAgentMCPEndpoint(c *gin.Context) {
 	agentID := c.Param("id")
