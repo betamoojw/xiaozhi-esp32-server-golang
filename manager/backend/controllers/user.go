@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
@@ -587,6 +588,90 @@ func (uc *UserController) GetRoleTemplates(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": roles})
 }
 
+func trimSuffixFoldForURL(s string, suffix string) string {
+	if len(s) < len(suffix) {
+		return s
+	}
+	start := len(s) - len(suffix)
+	if strings.EqualFold(s[start:], suffix) {
+		return s[:start]
+	}
+	return s
+}
+
+func normalizeIndexTTSVoiceOptionsBaseURL(raw string) string {
+	baseURL := strings.TrimRight(strings.TrimSpace(raw), "/")
+	baseURL = trimSuffixFoldForURL(baseURL, "/audio/speech")
+	baseURL = trimSuffixFoldForURL(baseURL, "/audio/voices")
+	return strings.TrimRight(baseURL, "/")
+}
+
+func (uc *UserController) fetchIndexTTSVoices(c *gin.Context, configID, overrideURL, overrideAPIKey string) ([]VoiceOption, error) {
+	baseURL := "http://127.0.0.1:7860"
+	apiKey := ""
+	if strings.TrimSpace(configID) != "" {
+		var cfg models.Config
+		if err := uc.DB.Where("type = ? AND config_id = ?", "tts", configID).First(&cfg).Error; err == nil {
+			var cfgMap map[string]any
+			if strings.TrimSpace(cfg.JsonData) != "" && json.Unmarshal([]byte(cfg.JsonData), &cfgMap) == nil {
+				if v, ok := cfgMap["api_url"].(string); ok && strings.TrimSpace(v) != "" {
+					baseURL = strings.TrimSpace(v)
+				}
+				if v, ok := cfgMap["api_key"].(string); ok {
+					apiKey = strings.TrimSpace(v)
+				}
+			}
+		}
+	}
+	if strings.TrimSpace(overrideURL) != "" {
+		baseURL = strings.TrimSpace(overrideURL)
+	}
+	if strings.TrimSpace(overrideAPIKey) != "" {
+		apiKey = strings.TrimSpace(overrideAPIKey)
+	}
+	baseURL = normalizeIndexTTSVoiceOptionsBaseURL(baseURL)
+	if baseURL == "" {
+		baseURL = "http://127.0.0.1:7860"
+	}
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, baseURL+indexTTSVoicesEndpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKey))
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("IndexTTS 获取音色失败: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	voiceMap := map[string]any{}
+	if err = json.Unmarshal(body, &voiceMap); err != nil {
+		return nil, err
+	}
+	result := make([]VoiceOption, 0, len(voiceMap))
+	for voice := range voiceMap {
+		v := strings.TrimSpace(voice)
+		if v == "" {
+			continue
+		}
+		// 过滤掉 IndexTTS 服务端内部默认前缀音色，优先展示可用系统音色与用户复刻音色
+		if strings.HasPrefix(strings.ToLower(v), "indextts_vllm") {
+			continue
+		}
+		result = append(result, VoiceOption{Value: v, Label: v})
+	}
+	return result, nil
+}
+
 // 获取音色选项
 func (uc *UserController) GetVoiceOptions(c *gin.Context) {
 	provider := c.Query("provider")
@@ -597,8 +682,20 @@ func (uc *UserController) GetVoiceOptions(c *gin.Context) {
 	configID := c.Query("config_id")
 
 	var systemVoices []VoiceOption
-	// 特殊处理：阿里云千问，根据配置中的模型过滤音色
-	if provider == "aliyun_qwen" {
+	// 特殊处理：IndexTTS 从远端服务读取可用音色
+	if provider == "indextts_vllm" {
+		voices, err := uc.fetchIndexTTSVoices(
+			c,
+			configID,
+			c.Query("api_url"),
+			c.Query("api_key"),
+		)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "获取IndexTTS音色失败: " + err.Error()})
+			return
+		}
+		systemVoices = voices
+	} else if provider == "aliyun_qwen" {
 		// 如果没有提供 config_id，则返回不区分模型的基础音色列表（用于管理员配置页等场景）
 		if configID == "" {
 			systemVoices = GetVoiceOptionsByProvider("aliyun_qwen")
@@ -630,24 +727,40 @@ func (uc *UserController) GetVoiceOptions(c *gin.Context) {
 	}
 
 	result := make([]VoiceOption, 0, len(systemVoices)+8)
+	seen := make(map[string]bool, len(systemVoices)+8)
+
+	// 先放系统音色
+	for _, v := range systemVoices {
+		key := strings.TrimSpace(v.Value)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, v)
+	}
+
+	// 再追加用户复刻音色（若与系统音色重复，优先保留复刻标签并置于后方）
 	if userID, ok := c.Get("user_id"); ok && configID != "" {
 		var clones []models.VoiceClone
 		if err := uc.DB.Where("user_id = ? AND provider = ? AND tts_config_id = ? AND status = ?", userID, provider, configID, "active").Order("created_at DESC").Find(&clones).Error; err == nil {
 			for _, clone := range clones {
-				result = append(result, BuildVoiceOptionForClone(clone))
+				opt := BuildVoiceOptionForClone(clone)
+				key := strings.TrimSpace(opt.Value)
+				if key == "" {
+					continue
+				}
+				if seen[key] {
+					for i := range result {
+						if strings.TrimSpace(result[i].Value) == key {
+							result = append(result[:i], result[i+1:]...)
+							break
+						}
+					}
+				}
+				seen[key] = true
+				result = append(result, opt)
 			}
 		}
-	}
-
-	seen := make(map[string]bool)
-	for _, v := range result {
-		seen[v.Value] = true
-	}
-	for _, v := range systemVoices {
-		if seen[v.Value] {
-			continue
-		}
-		result = append(result, v)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": result})
