@@ -69,6 +69,12 @@ type ChatSession struct {
 	// Close 保护，防止多次关闭
 	closeOnce sync.Once
 	closed    bool
+
+	openClawStreamMu sync.Mutex
+	openClawStreams  map[string]chan llm_common.LLMResponseStruct
+
+	openClawWarmupMu sync.Mutex
+	openClawWarmup   *openClawWarmupTask
 }
 
 type ChatSessionOption func(*ChatSession)
@@ -79,6 +85,7 @@ func NewChatSession(clientState *ClientState, serverTransport *ServerTransport, 
 		serverTransport:    serverTransport,
 		chatTextQueue:      util.NewQueue[AsrResponseChannelItem](10),
 		speakerResultReady: make(chan struct{}, 1), // 缓冲为1，避免阻塞
+		openClawStreams:    make(map[string]chan llm_common.LLMResponseStruct),
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -793,6 +800,120 @@ func (s *ChatSession) AddTextToTTSQueue(text string) error {
 	return s.llmManager.AddTextToTTSQueue(text)
 }
 
+func (s *ChatSession) getOrCreateOpenClawStream(correlationID string) (chan llm_common.LLMResponseStruct, bool, error) {
+	correlationID = strings.TrimSpace(correlationID)
+	if correlationID == "" {
+		return nil, false, fmt.Errorf("missing correlation_id")
+	}
+
+	s.openClawStreamMu.Lock()
+	if existing, ok := s.openClawStreams[correlationID]; ok {
+		s.openClawStreamMu.Unlock()
+		return existing, false, nil
+	}
+	streamChan := make(chan llm_common.LLMResponseStruct, 16)
+	s.openClawStreams[correlationID] = streamChan
+	s.openClawStreamMu.Unlock()
+
+	sessionCtx := s.clientState.SessionCtx.Get(s.clientState.Ctx)
+	ctx := s.clientState.AfterAsrSessionCtx.Get(sessionCtx)
+	options := llmResponseChannelOptions{}
+	hasWarmup := s.getOpenClawWarmupTask(correlationID) != nil
+	if hasWarmup {
+		options.disableTTSCommands = true
+		options.onEndFunc = func(err error, args ...any) {
+			s.finishOpenClawWarmup(correlationID, false)
+		}
+	}
+	log.Infof("OpenClaw stream created: device=%s correlation_id=%s warmup_attached=%v", s.clientState.DeviceID, correlationID, hasWarmup)
+	if err := s.llmManager.HandleLLMResponseChannelAsyncWithOptions(ctx, nil, streamChan, options); err != nil {
+		s.openClawStreamMu.Lock()
+		delete(s.openClawStreams, correlationID)
+		s.openClawStreamMu.Unlock()
+		close(streamChan)
+		return nil, false, err
+	}
+
+	return streamChan, true, nil
+}
+
+func (s *ChatSession) closeOpenClawStream(correlationID string) {
+	correlationID = strings.TrimSpace(correlationID)
+	if correlationID == "" {
+		return
+	}
+	s.openClawStreamMu.Lock()
+	delete(s.openClawStreams, correlationID)
+	s.openClawStreamMu.Unlock()
+}
+
+func (s *ChatSession) clearOpenClawStreams() {
+	s.openClawStreamMu.Lock()
+	s.openClawStreams = make(map[string]chan llm_common.LLMResponseStruct)
+	s.openClawStreamMu.Unlock()
+}
+
+func (s *ChatSession) InjectOpenClawResponse(event openclaw.ResponseDelivery) error {
+	correlationID := strings.TrimSpace(event.CorrelationID)
+	text := strings.TrimSpace(event.Text)
+
+	// 非流式兜底：没有 correlation_id 时直接按单句注入。
+	if correlationID == "" {
+		if text == "" {
+			return nil
+		}
+		return s.AddTextToTTSQueue(text)
+	}
+
+	// 中间空分片没有意义，直接跳过；结束空分片保留用于收尾。
+	if text == "" && !event.IsEnd {
+		return nil
+	}
+
+	streamChan, created, err := s.getOrCreateOpenClawStream(correlationID)
+	if err != nil {
+		return err
+	}
+
+	isStart := event.IsStart
+	if created && !isStart {
+		// 若首个到达分片没有标 start，兜底拉起首段。
+		isStart = true
+	}
+	if isStart {
+		if task := s.getOpenClawWarmupTask(correlationID); task != nil {
+			if text != "" {
+				// 仅在第一段真正可播正文到达时才停掉暖场，避免被过短前导分片过早抢占。
+				s.cancelOpenClawWarmup(correlationID, false)
+				s.beginOpenClawSpeech(task)
+				isStart = task.takeSegmentStartFlag()
+			} else {
+				isStart = false
+			}
+		}
+	} else if event.IsEnd {
+		s.cancelOpenClawWarmup(correlationID, false)
+	}
+
+	resp := llm_common.LLMResponseStruct{
+		Text:    text,
+		IsStart: isStart,
+		IsEnd:   event.IsEnd,
+	}
+
+	select {
+	case <-s.ctx.Done():
+		return fmt.Errorf("chat session closed")
+	case streamChan <- resp:
+	}
+
+	if event.IsEnd {
+		s.closeOpenClawStream(correlationID)
+	}
+
+	return nil
+}
+
 // InterruptAndClearTTSQueue 触发 TTS 打断并清空发送队列（供 realtime 模式 VAD 打断等场景调用）
 func (s *ChatSession) InterruptAndClearTTSQueue() {
 	s.ttsManager.InterruptAndClearQueue()
@@ -1075,9 +1196,11 @@ func (s *ChatSession) Close() {
 		if s.cancel != nil {
 			s.cancel()
 		}
+		s.finishOpenClawWarmup("", false)
 
 		// 清理聊天文本队列
 		s.ClearChatTextQueue()
+		s.clearOpenClawStreams()
 
 		// 停止说话和清理音频相关资源
 		s.StopSpeaking(true)
@@ -1135,6 +1258,7 @@ func (s *ChatSession) actionDoChat(ctx context.Context, text string, speakerResu
 		)
 		if isOpenClawMode {
 			if isExitKeyword {
+				s.finishOpenClawWarmup("", true)
 				exited := openclawManager.ExitMode(agentID, deviceID)
 				_ = s.AddTextToTTSQueue("已退出OpenClaw模式")
 				log.Infof("设备 %s 退出OpenClaw模式: agent=%s exited=%v", deviceID, agentID, exited)
@@ -1149,6 +1273,7 @@ func (s *ChatSession) actionDoChat(ctx context.Context, text string, speakerResu
 				len(trimmedText),
 				openClawLogSnippet(trimmedText, 64),
 			)
+			s.finishOpenClawWarmup("", true)
 			messageID, err := openclawManager.SendMessage(
 				agentID,
 				deviceID,
@@ -1167,6 +1292,7 @@ func (s *ChatSession) actionDoChat(ctx context.Context, text string, speakerResu
 				openclawManager.ExitMode(agentID, deviceID)
 				_ = s.AddTextToTTSQueue("OpenClaw当前不可用，已退出OpenClaw模式")
 			} else {
+				s.startOpenClawWarmup(messageID, text)
 				log.Infof("OpenClaw发送STT成功: agent=%s device=%s session=%s message_id=%s", agentID, deviceID, openclawSessionID, messageID)
 			}
 			return nil
@@ -1191,6 +1317,7 @@ func (s *ChatSession) actionDoChat(ctx context.Context, text string, speakerResu
 			openClawLogSnippet(trimmedText, 64),
 		)
 	} else {
+		s.finishOpenClawWarmup("", false)
 		if openclawManager.ExitMode(agentID, deviceID) {
 			log.Debugf("OpenClaw配置未开启，已强制退出模式: agent=%s device=%s", agentID, deviceID)
 		}
