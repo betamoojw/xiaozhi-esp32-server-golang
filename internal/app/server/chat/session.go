@@ -1091,6 +1091,35 @@ func (s *ChatSession) CheckDeviceActivated() (bool, error) {
 }
 
 func (s *ChatSession) HandleListenStart(msg *ClientMessage) error {
+	// 先检查激活状态
+	isActivated, err := s.CheckDeviceActivated()
+	if err != nil {
+		log.Errorf("检查设备激活状态失败: %v", err)
+		return err
+	}
+	if !isActivated {
+		return nil
+	}
+
+	// realtime 模式首次启动：跳过欢迎语判断和 Destroy，直接进入监听
+	if msg.Mode == "realtime" {
+
+		if !s.clientState.IsWelcomePlaying {
+			s.StopSpeaking(false)
+		}
+
+		s.clientState.ListenMode = msg.Mode
+		log.Infof("设备 %s 拾音模式: %s", msg.DeviceID, msg.Mode)
+
+		startSeq := s.beginListenStart()
+		go func() {
+			if err := s.OnListenStart(startSeq); err != nil {
+				log.Errorf("设备 %s listen start 启动失败: %v", msg.DeviceID, err)
+			}
+		}()
+		return nil
+	}
+
 	if s.clientState.IsWelcomePlaying {
 		log.Infof("设备 %s 欢迎语播放中，忽略 listen start", msg.DeviceID)
 		return nil
@@ -1101,20 +1130,9 @@ func (s *ChatSession) HandleListenStart(msg *ClientMessage) error {
 		return nil
 	}
 
-	isActivated, err := s.CheckDeviceActivated()
-	if err != nil {
-		log.Errorf("检查设备激活状态失败: %v", err)
-		return err
-	}
-	if !isActivated {
-		return nil
-	}
-
 	// 处理拾音模式
-	if msg.Mode != "" {
-		s.clientState.ListenMode = msg.Mode
-		log.Infof("设备 %s 拾音模式: %s", msg.DeviceID, msg.Mode)
-	}
+	s.clientState.ListenMode = msg.Mode
+	log.Infof("设备 %s 拾音模式: %s", msg.DeviceID, msg.Mode)
 	//if s.clientState.ListenMode == "manual" {
 	s.StopSpeaking(false)
 	//}
@@ -1159,10 +1177,15 @@ func (s *ChatSession) OnListenStart(startSeq uint64) error {
 	default:
 	}
 
-	s.clientState.Destroy()
-	if !s.isCurrentListenStart(startSeq) {
-		log.Debugf("OnListenStart stale after destroy, skip")
-		return nil
+	// realtime 模式：跳过 Destroy，保持 ASR 持续运行，但清空 AudioBuffer
+	if s.clientState.IsRealTime() {
+		s.clientState.AsrAudioBuffer.ClearAsrAudioData()
+	} else {
+		s.clientState.Destroy()
+		if !s.isCurrentListenStart(startSeq) {
+			log.Debugf("OnListenStart stale after destroy, skip")
+			return nil
+		}
 	}
 
 	s.clientState.SetListenPhase(ListenPhaseStarting)
